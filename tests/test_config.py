@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from anticheatbot.config import Settings
 
 
 def test_webapp_public_url_strips_trailing_slash() -> None:
     s = Settings(BOT_TOKEN="1:a", WEBAPP_PUBLIC_URL="https://example.com/")
     assert s.webapp_public_url == "https://example.com"
+
+
+def test_webapp_public_url_requires_https() -> None:
+    with pytest.raises(ValidationError):
+        Settings(BOT_TOKEN="1:a", WEBAPP_PUBLIC_URL="http://example.com")
 
 
 def test_global_admin_id_set_merges_and_skips_invalid() -> None:

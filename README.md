@@ -42,6 +42,19 @@ docker compose up --build
 - `DATABASE_URL=... uv run alembic upgrade head`：执行数据库迁移。
 - `uv run pytest`：运行单元测试（需 `uv sync --group dev`）。
 
+## 入群验证：发不出链接 / `BUTTON_TYPE_INVALID`
+
+日志里若出现 **`BUTTON_TYPE_INVALID`**，表示 Telegram 拒绝了 **内联键盘上的 `web_app` 按钮**（与「域名是否在 BotFather 里登记」不是一回事：登记正确也可能在部分群/客户端上仍拒 `web_app`）。请逐项核对：
+
+- **`WEBAPP_PUBLIC_URL` 必须是 `https://`**（不要用 `http://`、不要用裸 IP；本地调试用隧道域名）。
+- 在 **@BotFather** 里为机器人配置的 **Mini App / 域名** 与证书，须与上述地址的 **主机名一致**。
+- **自动回退**：若群内 `web_app` 被拒，机器人会再发一条带 **`https://t.me/<你的机器人用户名>?startapp=<token>`** 的普通链接按钮（[Direct link Mini Apps](https://core.telegram.org/bots/webapps#direct-link-mini-apps)）。为此机器人须设置 **@username**；且 @BotFather 里为该机器人配置的 **默认打开页**应能进入验证流程（例如默认 Web App URL 指向 `.../verify/index.html` 或你的统一入口页）。
+- 群内仍失败时，会尝试 **私聊**发邀请；若出现 **`bot can't initiate conversation`**，说明用户从未在私聊里对该机器人点过 **/start**，需让用户先私聊机器人 `/start`，再重新入群或等下次触发。
+
+若群内、私聊都发失败，当前逻辑会 **撤销对该成员的禁言** 并作废 token（避免一直关着却收不到验证）。
+
+**论坛群**：入群事件若带话题，邀请会发到对应 **话题**（`message_thread_id`），避免发到默认栏导致你看不到。
+
 ## 全局管理员
 
 在 `.env` 中设置 `GLOBAL_ADMIN_USER_IDS`（或兼容项 `ADMIN_USER_IDS`），逗号分隔 Telegram 用户数字 ID。合并后的集合拥有：

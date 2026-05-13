@@ -2,6 +2,18 @@
   var params = new URLSearchParams(location.search);
   var token = params.get('t');
   var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg && !token) {
+    if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
+      token = tg.initDataUnsafe.start_param;
+    } else if (tg.initData && typeof tg.initData === 'string') {
+      try {
+        var sp = new URLSearchParams(tg.initData).get('start_param');
+        if (sp) token = sp;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
   if (!tg) {
     var errLc = window.WebappI18n ? WebappI18n.resolveLocale(null) : 'zh-Hans';
     var errMsg = window.WebappI18n ? WebappI18n.verifyT(errLc, 'errOutsideTg') : 'Open inside Telegram';
@@ -19,6 +31,14 @@
     return WebappI18n.verifyT(locale, key, vars);
   }
 
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   var st0 = document.getElementById('status');
   if (st0) st0.textContent = t('loading');
 
@@ -31,11 +51,16 @@
 
   async function api(path, opts) {
     var o = opts || {};
-    var r = await fetch(path, {
-      method: o.method || 'GET',
-      headers: Object.assign({}, headers(), o.headers || {}),
-      body: o.body,
-    });
+    var r;
+    try {
+      r = await fetch(path, {
+        method: o.method || 'GET',
+        headers: Object.assign({}, headers(), o.headers || {}),
+        body: o.body,
+      });
+    } catch (err) {
+      throw new Error(t('networkError'));
+    }
     var text = await r.text();
     var data;
     try {
@@ -106,8 +131,43 @@
         clearInterval(id);
         cb();
       }
-      if (n > 80) clearInterval(id);
+      if (n > 80) {
+        clearInterval(id);
+        cb();
+      }
     }, 100);
+  }
+
+  function showVerifySuccessThenClose() {
+    var app = document.getElementById('app');
+    if (app) app.style.display = 'none';
+    var st = document.getElementById('status');
+    st.style.display = 'block';
+    st.className = 'status-line status-line--ok';
+    st.textContent = t('verifySuccess');
+    setTimeout(function () {
+      try {
+        tg.close();
+      } catch (e) {
+        /* ignore */
+      }
+    }, 900);
+  }
+
+  function setRulesContent(el, rawMd) {
+    var src = rawMd && String(rawMd).trim() ? rawMd : t('noRules');
+    if (window.marked && window.DOMPurify) {
+      try {
+        var html = marked.parse(src, { breaks: true, gfm: true });
+        el.innerHTML = DOMPurify.sanitize(html);
+        el.classList.add('rules-markdown');
+        return;
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    el.textContent = src;
+    el.classList.remove('rules-markdown');
   }
 
   function setErr(msg) {
@@ -131,16 +191,11 @@
     lab.textContent = t('langLabel');
     var sel = document.createElement('select');
     sel.id = 'verifyUiLang';
-    var LANG_NAMES = { 'zh-Hans': '简体中文', en: 'English', ja: '日本語', ko: '한국어' };
-    ;[
-      ['zh-Hans'],
-      ['en'],
-      ['ja'],
-      ['ko'],
-    ].forEach(function (o) {
+    var LANG_KEYS = { 'zh-Hans': 'langOptZh', en: 'langOptEn', ja: 'langOptJa', ko: 'langOptKo' };
+    ;['zh-Hans', 'en', 'ja', 'ko'].forEach(function (lc) {
       var opt = document.createElement('option');
-      opt.value = o[0];
-      opt.textContent = LANG_NAMES[o[0]] || o[0];
+      opt.value = lc;
+      opt.textContent = t(LANG_KEYS[lc]);
       sel.appendChild(opt);
     });
     sel.value = locale;
@@ -177,6 +232,17 @@
   async function run() {
     locale = WebappI18n.getLocale(tg);
     var st = document.getElementById('status');
+    if (!token && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
+      token = tg.initDataUnsafe.start_param;
+    }
+    if (!token && tg.initData && typeof tg.initData === 'string') {
+      try {
+        var sp2 = new URLSearchParams(tg.initData).get('start_param');
+        if (sp2) token = sp2;
+      } catch (e2) {
+        /* ignore */
+      }
+    }
     if (!token) {
       st.innerHTML = '<span class="err">' + t('missingT') + '</span>';
       return;
@@ -190,7 +256,7 @@
     try {
       sess = await fetchSession();
     } catch (e) {
-      st.innerHTML = '<span class="err">' + e.message + '</span>';
+      st.innerHTML = '<span class="err">' + escapeHtml(e.message) + '</span>';
       return;
     }
     st.style.display = 'none';
@@ -220,10 +286,15 @@
       ban.textContent = t('turnstileBanner');
       main.appendChild(ban);
       waitTurnstile(function () {
+        if (!window.turnstile) {
+          setErr(t('turnstileLoadFailed'));
+          return;
+        }
         try {
           renderTurnstile(sess.turnstile_site_key);
         } catch (e) {
           console.warn(e);
+          setErr(t('turnstileLoadFailed'));
         }
       });
     }
@@ -241,7 +312,7 @@
     var rules = document.createElement('div');
     rules.className = 'rules-scroll';
     rules.id = 'rules';
-    rules.textContent = sess.rules_markdown || t('noRules');
+    setRulesContent(rules, sess.rules_markdown);
     var actions = document.createElement('div');
     actions.className = 'actions';
     var agree = document.createElement('button');
@@ -265,7 +336,7 @@
           method: 'POST',
           body: JSON.stringify({ token: token, turnstile_token: turnstileToken }),
         });
-        tg.close();
+        showVerifySuccessThenClose();
       } catch (e) {
         agree.disabled = false;
         setErr(e.message);
@@ -292,6 +363,16 @@
       pass: sess.quiz_pass_score_threshold,
     });
     card.appendChild(hint);
+
+    if (!(sess.quiz || []).length) {
+      var empty = document.createElement('p');
+      empty.className = 'err';
+      empty.style.marginTop = '0.5rem';
+      empty.textContent = t('quizEmptyBank');
+      card.appendChild(empty);
+      main.appendChild(card);
+      return;
+    }
 
     var form = document.createElement('form');
     (sess.quiz || []).forEach(function (q, qi) {
@@ -358,20 +439,34 @@
         }
         if (!res.ok) {
           btn.disabled = false;
-          var need = data.need != null ? data.need : sess.quiz_pass_score_threshold;
-          setErr(
-            t('scoreFail', {
-              score: data.score != null ? data.score : '?',
-              max: data.max_score != null ? data.max_score : '?',
-              need: need,
-            })
-          );
+          if (res.status === 403 && (data.score != null || data.max_score != null || data.need != null)) {
+            var need = data.need != null ? data.need : sess.quiz_pass_score_threshold;
+            setErr(
+              t('scoreFail', {
+                score: data.score != null ? data.score : '?',
+                max: data.max_score != null ? data.max_score : '?',
+                need: need,
+              })
+            );
+          } else {
+            var errTxt =
+              (typeof data.message === 'string' && data.message) ||
+              (typeof data.detail === 'string' && data.detail) ||
+              text ||
+              String(res.status);
+            setErr(errTxt);
+          }
           return;
         }
-        tg.close();
+        showVerifySuccessThenClose();
       } catch (e) {
         btn.disabled = false;
-        setErr(e.message);
+        var msg = e && e.message ? String(e.message) : '';
+        var isNet =
+          (typeof TypeError !== 'undefined' && e instanceof TypeError) ||
+          msg === 'Failed to fetch' ||
+          /network|fetch/i.test(msg);
+        setErr(isNet ? t('networkError') : msg);
       }
     });
     card.appendChild(form);
@@ -379,6 +474,6 @@
   }
 
   run().catch(function (e) {
-    document.getElementById('status').innerHTML = '<span class="err">' + e.message + '</span>';
+    document.getElementById('status').innerHTML = '<span class="err">' + escapeHtml(e.message) + '</span>';
   });
 })();

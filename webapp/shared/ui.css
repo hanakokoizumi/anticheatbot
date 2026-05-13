@@ -84,6 +84,86 @@ body {
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
+/* 群规 Markdown（DOMPurify 净化后） */
+.rules-scroll.rules-markdown {
+  white-space: normal;
+}
+
+.rules-scroll.rules-markdown :first-child {
+  margin-top: 0;
+}
+
+.rules-scroll.rules-markdown :last-child {
+  margin-bottom: 0;
+}
+
+.rules-scroll.rules-markdown p {
+  margin: 0.4em 0;
+}
+
+.rules-scroll.rules-markdown h1,
+.rules-scroll.rules-markdown h2,
+.rules-scroll.rules-markdown h3 {
+  margin: 0.65em 0 0.35em;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.rules-scroll.rules-markdown h1 {
+  font-size: 1.05rem;
+}
+
+.rules-scroll.rules-markdown ul,
+.rules-scroll.rules-markdown ol {
+  margin: 0.35em 0;
+  padding-left: 1.35rem;
+}
+
+.rules-scroll.rules-markdown li {
+  margin: 0.2em 0;
+}
+
+.rules-scroll.rules-markdown a {
+  color: var(--tg-theme-link-color, #2481cc);
+  word-break: break-word;
+}
+
+.rules-scroll.rules-markdown code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.84em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.rules-scroll.rules-markdown pre {
+  margin: 0.5em 0;
+  padding: 0.55rem 0.65rem;
+  overflow: auto;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.rules-scroll.rules-markdown pre code {
+  padding: 0;
+  background: none;
+}
+
+.rules-scroll.rules-markdown blockquote {
+  margin: 0.5em 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid rgba(0, 0, 0, 0.12);
+  color: var(--tg-theme-hint-color, #555);
+}
+
+.status-line.status-line--ok {
+  color: var(--tg-theme-text-color, #14532d);
+  font-weight: 500;
+}
+
 .quiz-q {
   margin-bottom: 1rem;
   padding-bottom: 1rem;

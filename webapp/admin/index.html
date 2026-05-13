@@ -10,7 +10,7 @@
 <body>
   <div id="toast" class="toast" style="display:none" aria-live="polite"></div>
   <div class="shell shell--wide">
-    <p id="status" class="status-line" data-i18n="statusLoading">加载中…</p>
+    <p id="status" class="status-line" role="status" aria-live="polite" data-i18n="statusLoading">加载中…</p>
     <div id="panel" class="hidden">
       <header class="topbar">
         <h1><span data-i18n="pageTitle">群管理</span><span id="gab" class="badge badge--accent hidden" data-i18n="badgeGlobal">全局</span></h1>
@@ -67,11 +67,56 @@
         </div>
       </div>
 
-      <div class="card">
-        <h2 class="section-title" data-i18n="sectionRules">群规（Markdown）</h2>
-        <div class="field">
-          <label for="f_rules_markdown" data-i18n="lblRulesBody">正文</label>
-          <textarea id="f_rules_markdown" class="textarea-lg" data-i18n-placeholder="phRules" placeholder="支持 Markdown 文本"></textarea>
+      <div id="admin_block_rules_mode">
+        <div class="card">
+          <h2 class="section-title" data-i18n="sectionRules">群规（Markdown）</h2>
+          <div class="field">
+            <label for="f_rules_markdown" data-i18n="lblRulesBody">正文</label>
+            <textarea id="f_rules_markdown" class="textarea-lg" data-i18n-placeholder="phRules" placeholder="支持 Markdown 文本"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div id="admin_block_quiz_mode" class="hidden">
+        <div class="card">
+          <h2 class="section-title" data-i18n="sectionQuizCfg">问卷参数</h2>
+          <div class="field">
+            <label for="f_quiz_pass_score_threshold" data-i18n="lblQuizPass">及格分数线（总分制下）</label>
+            <input type="number" id="f_quiz_pass_score_threshold" min="0" step="1" />
+          </div>
+          <div class="field">
+            <label for="f_quiz_draw_count" data-i18n="lblQuizDraw">每次抽取题目数</label>
+            <input type="number" id="f_quiz_draw_count" min="1" step="1" />
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="section-title" id="quizBankHeading">题库</h2>
+          <p id="quizBankHint" class="sub" style="margin:0 0 0.75rem" data-i18n="quizBankMultiHint"></p>
+          <div id="quizList"></div>
+          <h3 class="section-title" style="margin-top:1rem;font-size:0.875rem" data-i18n="subQuizForm">新增 / 编辑题目</h3>
+          <input type="hidden" id="qf_id" value="" />
+          <div class="field">
+            <label for="qf_prompt" data-i18n="lblQuizPrompt">题干</label>
+            <textarea id="qf_prompt" rows="3"></textarea>
+          </div>
+          <div class="field">
+            <label for="qf_choices" data-i18n="lblQuizChoices">选项（每行一个，至少 2 行）</label>
+            <textarea id="qf_choices" rows="5" data-i18n-placeholder="phQuizChoices" placeholder="选项 A&#10;选项 B&#10;…"></textarea>
+          </div>
+          <div class="field">
+            <label for="qf_correct" data-i18n="lblQuizCorrect">正确答案序号（从 0 开始）</label>
+            <input type="number" id="qf_correct" min="0" value="0" />
+          </div>
+          <div class="field">
+            <label for="qf_points" data-i18n="lblQuizPoints">分值</label>
+            <input type="number" id="qf_points" min="0" value="10" />
+          </div>
+          <div class="toolbar" style="margin-top:0">
+            <button type="button" class="btn btn--primary" id="qf_save" data-i18n="btnQuizSave">保存题目</button>
+            <button type="button" class="btn btn--secondary" id="qf_new" data-i18n="btnQuizNew">新建题目</button>
+            <button type="button" class="btn btn--secondary" id="qf_reset" data-i18n="btnQuizReset">清空表单</button>
+          </div>
         </div>
       </div>
 
@@ -88,45 +133,6 @@
         <div class="field">
           <label for="f_translation_allowed_locales" data-i18n="lblAllowedLocales">允许翻译到的语言</label>
           <textarea id="f_translation_allowed_locales" rows="3" data-i18n-placeholder="phAllowedLocales" placeholder='留空表示不限制；或 JSON 数组如 ["en","ja"]'></textarea>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2 class="section-title" data-i18n="sectionQuizCfg">问卷参数</h2>
-        <div class="field">
-          <label for="f_quiz_pass_score_threshold" data-i18n="lblQuizPass">及格分数线（总分制下）</label>
-          <input type="number" id="f_quiz_pass_score_threshold" min="0" step="1" />
-        </div>
-        <div class="field">
-          <label for="f_quiz_draw_count" data-i18n="lblQuizDraw">每次抽取题目数</label>
-          <input type="number" id="f_quiz_draw_count" min="1" step="1" />
-        </div>
-      </div>
-
-      <div class="card">
-        <h2 class="section-title" data-i18n="sectionQuizBank">题库</h2>
-        <div id="quizList"></div>
-        <h3 class="section-title" style="margin-top:1rem;font-size:0.875rem" data-i18n="subQuizForm">新增 / 编辑题目</h3>
-        <input type="hidden" id="qf_id" value="" />
-        <div class="field">
-          <label for="qf_prompt" data-i18n="lblQuizPrompt">题干</label>
-          <textarea id="qf_prompt" rows="3"></textarea>
-        </div>
-        <div class="field">
-          <label for="qf_choices" data-i18n="lblQuizChoices">选项（每行一个，至少 2 行）</label>
-          <textarea id="qf_choices" rows="5" data-i18n-placeholder="phQuizChoices" placeholder="选项 A&#10;选项 B&#10;…"></textarea>
-        </div>
-        <div class="field">
-          <label for="qf_correct" data-i18n="lblQuizCorrect">正确答案序号（从 0 开始）</label>
-          <input type="number" id="qf_correct" min="0" value="0" />
-        </div>
-        <div class="field">
-          <label for="qf_points" data-i18n="lblQuizPoints">分值</label>
-          <input type="number" id="qf_points" min="0" value="10" />
-        </div>
-        <div class="toolbar" style="margin-top:0">
-          <button type="button" class="btn btn--primary" id="qf_save" data-i18n="btnQuizSave">保存题目</button>
-          <button type="button" class="btn btn--secondary" id="qf_reset" data-i18n="btnQuizReset">清空表单</button>
         </div>
       </div>
 
@@ -169,7 +175,7 @@
 
       <div class="save-bar">
         <button type="button" class="btn btn--primary" id="btnSave" data-i18n="btnSaveGroup">保存群设置</button>
-        <p class="sub" style="margin:0.5rem 0 0;font-size:0.75rem" data-i18n="hintSaveBar">题库单独使用「保存题目」；上方表单为群级配置。</p>
+        <p class="sub" style="margin:0.5rem 0 0;font-size:0.75rem" data-i18n="hintSaveBar">保存群设置不含题库；问卷模式下可多次「保存题目」添加多道题。</p>
       </div>
     </div>
   </div>

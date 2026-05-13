@@ -39,11 +39,16 @@
 
   async function api(path, opts) {
     const o = opts || {};
-    const r = await fetch(path, {
-      method: o.method || 'GET',
-      headers: Object.assign({}, headers(), o.headers || {}),
-      body: o.body,
-    });
+    let r;
+    try {
+      r = await fetch(path, {
+        method: o.method || 'GET',
+        headers: Object.assign({}, headers(), o.headers || {}),
+        body: o.body,
+      });
+    } catch (err) {
+      throw new Error(at('networkError'));
+    }
     const text = await r.text();
     let data;
     try {
@@ -140,6 +145,15 @@
     setVal('f_llm_max_messages', s.llm_max_messages);
     setVal('f_llm_min_confidence_action', s.llm_min_confidence_action);
     setVal('f_spam_action', s.spam_action || 'delete');
+    syncVerifyModeBlocks();
+  }
+
+  function syncVerifyModeBlocks() {
+    var mode = valStr('f_verify_mode') || 'rules_ack';
+    var rulesB = document.getElementById('admin_block_rules_mode');
+    var quizB = document.getElementById('admin_block_quiz_mode');
+    if (rulesB) rulesB.classList.toggle('hidden', mode !== 'rules_ack');
+    if (quizB) quizB.classList.toggle('hidden', mode !== 'quiz');
   }
 
   function collectPatchBody() {
@@ -206,9 +220,21 @@
 
   async function loadSettingsAndQuiz() {
     if (!chatId) return;
-    var s = await api('/api/admin/settings?chat_id=' + encodeURIComponent(chatId));
-    applySettings(s);
-    await loadQuizList();
+    var rb = document.getElementById('reload');
+    if (rb) rb.disabled = true;
+    document.querySelectorAll('.chat-item').forEach(function (b) {
+      b.disabled = true;
+    });
+    try {
+      var s = await api('/api/admin/settings?chat_id=' + encodeURIComponent(chatId));
+      applySettings(s);
+      await loadQuizList();
+    } finally {
+      if (rb) rb.disabled = false;
+      document.querySelectorAll('.chat-item').forEach(function (b) {
+        b.disabled = false;
+      });
+    }
   }
 
   async function saveSettings() {
@@ -216,6 +242,8 @@
       toast(at('toastSelectChat'), true);
       return;
     }
+    var btn = document.getElementById('btnSave');
+    if (btn) btn.disabled = true;
     try {
       await api('/api/admin/settings?chat_id=' + encodeURIComponent(chatId), {
         method: 'PATCH',
@@ -226,16 +254,37 @@
       await loadSettingsAndQuiz();
     } catch (e) {
       toast(e.message, true);
+    } finally {
+      if (btn) btn.disabled = false;
     }
+  }
+
+  function updateQuizBankHeading(count) {
+    var h = document.getElementById('quizBankHeading');
+    if (h) h.textContent = af('sectionQuizBankCount', { n: count });
   }
 
   async function loadQuizList() {
     if (!chatId) return;
-    var data = await api('/api/admin/quiz?chat_id=' + encodeURIComponent(chatId));
     var list = document.getElementById('quizList');
-    if (!list) return;
-    list.innerHTML = '';
-    (data.questions || []).forEach(function (q) {
+    if (list) {
+      list.style.pointerEvents = 'none';
+      list.style.opacity = '0.65';
+    }
+    try {
+      var data = await api('/api/admin/quiz?chat_id=' + encodeURIComponent(chatId));
+      var questions = data.questions || [];
+      updateQuizBankHeading(questions.length);
+      if (!list) return;
+      list.innerHTML = '';
+    if (!questions.length) {
+      var empty = document.createElement('p');
+      empty.className = 'sub';
+      empty.style.margin = '0 0 0.75rem';
+      empty.textContent = at('quizBankEmpty');
+      list.appendChild(empty);
+    }
+    questions.forEach(function (q) {
       var row = document.createElement('div');
       row.className = 'quiz-row';
       var meta = document.createElement('div');
@@ -275,6 +324,12 @@
       row.appendChild(actions);
       list.appendChild(row);
     });
+    } finally {
+      if (list) {
+        list.style.pointerEvents = '';
+        list.style.opacity = '';
+      }
+    }
   }
 
   function escapeHtml(s) {
@@ -297,6 +352,13 @@
   function resetQuizForm() {
     fillQuizForm({ id: '', prompt: '', choices: [], correct_index: 0, points: 10 });
     document.getElementById('qf_id').value = '';
+  }
+
+  function setQuizFormBusy(disabled) {
+    ['qf_save', 'qf_reset', 'qf_new'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.disabled = disabled;
+    });
   }
 
   async function saveQuiz() {
@@ -338,6 +400,7 @@
       return;
     }
     try {
+      setQuizFormBusy(true);
       await api('/api/admin/quiz?chat_id=' + encodeURIComponent(chatId), {
         method: 'POST',
         headers: headers(),
@@ -348,11 +411,14 @@
       await loadQuizList();
     } catch (e) {
       toast(e.message, true);
+    } finally {
+      setQuizFormBusy(false);
     }
   }
 
   async function deleteQuiz(id) {
     try {
+      setQuizFormBusy(true);
       await api(
         '/api/admin/quiz?chat_id=' + encodeURIComponent(chatId) + '&id=' + encodeURIComponent(String(id)),
         { method: 'DELETE' }
@@ -361,6 +427,8 @@
       await loadQuizList();
     } catch (e) {
       toast(e.message, true);
+    } finally {
+      setQuizFormBusy(false);
     }
   }
 
@@ -369,6 +437,8 @@
       toast(at('toastSelectChat'), true);
       return;
     }
+    var btnSt = document.getElementById('btnStats');
+    if (btnSt) btnSt.disabled = true;
     var days = parseInt(document.getElementById('statsRange').value, 10) || 7;
     var out = document.getElementById('statsOut');
     out.innerHTML = '<p class="sub" style="margin:0">' + escapeHtml(at('statsLoading')) + '</p>';
@@ -386,7 +456,9 @@
       dl.className = 'stats-dl';
       keys.forEach(function (k) {
         var dt = document.createElement('dt');
-        dt.textContent = k;
+        var evKey = 'statsEvt_' + k;
+        var lbl = at(evKey);
+        dt.textContent = lbl === evKey ? k : lbl;
         var dd = document.createElement('dd');
         dd.textContent = String(counts[k]);
         dl.appendChild(dt);
@@ -401,10 +473,16 @@
       out.appendChild(dl);
     } catch (e) {
       out.innerHTML = '<p class="err" style="margin:0">' + escapeHtml(e.message) + '</p>';
+    } finally {
+      if (btnSt) btnSt.disabled = false;
     }
   }
 
   document.getElementById('reload').onclick = function () {
+    if (!chatId) {
+      toast(at('toastSelectChat'), true);
+      return;
+    }
     loadSettingsAndQuiz().catch(function (e) {
       toast(e.message, true);
     });
@@ -416,15 +494,33 @@
       toast(at('toastSelectChat'), true);
       return;
     }
+    var clr = document.getElementById('cleartr');
+    if (clr) clr.disabled = true;
     try {
       await api('/api/admin/translation-cache/clear?chat_id=' + encodeURIComponent(chatId), { method: 'POST' });
       toast(at('toastTrCleared'));
     } catch (e) {
       toast(e.message, true);
+    } finally {
+      if (clr) clr.disabled = false;
     }
   };
   document.getElementById('qf_save').onclick = saveQuiz;
   document.getElementById('qf_reset').onclick = resetQuizForm;
+  var qfNew = document.getElementById('qf_new');
+  if (qfNew) {
+    qfNew.onclick = function () {
+      resetQuizForm();
+      toast(at('toastQuizNewForm'));
+      var el = document.getElementById('qf_prompt');
+      if (el) el.focus();
+    };
+  }
+
+  var verifyModeEl = document.getElementById('f_verify_mode');
+  if (verifyModeEl) {
+    verifyModeEl.addEventListener('change', syncVerifyModeBlocks);
+  }
 
   document.getElementById('adminUiLocale').addEventListener('change', function () {
     locale = this.value;
@@ -434,10 +530,13 @@
       loadQuizList().catch(function (e) {
         toast(e.message, true);
       });
+    } else {
+      syncVerifyModeBlocks();
     }
   });
 
   refreshAdminI18n();
+  syncVerifyModeBlocks();
 
   (async function init() {
     var st = document.getElementById('status');

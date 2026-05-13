@@ -38,8 +38,15 @@ class Settings(BaseSettings):
 
     @field_validator("webapp_public_url")
     @classmethod
-    def strip_slash(cls, v: str) -> str:
-        return v.rstrip("/")
+    def normalize_webapp_public_url(cls, v: str) -> str:
+        v = v.strip().rstrip("/")
+        if not v.lower().startswith("https://"):
+            msg = (
+                "WEBAPP_PUBLIC_URL must start with https:// "
+                "(Telegram inline WebApp buttons reject http and most non-public URLs)."
+            )
+            raise ValueError(msg)
+        return v
 
     @staticmethod
     def _parse_id_list(raw: str) -> set[int]:

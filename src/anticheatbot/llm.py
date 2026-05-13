@@ -101,6 +101,13 @@ async def moderate_message(
     text: str,
     timeout: float = 45.0,
 ) -> dict[str, Any]:
+    user_content = text[:8000]
+    log.debug(
+        "moderate_message_request model=%s user_chars=%s endpoint=%s",
+        model,
+        len(user_content),
+        base_url.rstrip("/") + "/chat/completions",
+    )
     messages = [
         {
             "role": "system",
@@ -109,9 +116,9 @@ async def moderate_message(
                 "for Telegram group moderation."
             ),
         },
-        {"role": "user", "content": text[:8000]},
+        {"role": "user", "content": user_content},
     ]
-    return await chat_completion_json(
+    out = await chat_completion_json(
         base_url=base_url,
         api_key=api_key,
         model=model,
@@ -119,3 +126,5 @@ async def moderate_message(
         temperature=0.0,
         timeout=timeout,
     )
+    log.debug("moderate_message_response keys=%s", list(out.keys()) if isinstance(out, dict) else type(out))
+    return out
