@@ -5,6 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>入群验证</title>
   <link rel="stylesheet" href="/shared/ui.css" />
+  <!-- 必须早于 telegram-web-app.js：官方脚本可能在初始化时 replaceState 去掉 ?tgWebAppStartParam= / ?t= -->
+  <script>
+    (function () {
+      try {
+        var s = new URLSearchParams(window.location.search);
+        var t = s.get('t') || s.get('tgWebAppStartParam');
+        if (!t && window.location.hash && window.location.hash.length > 1) {
+          var h = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+          t = h.get('tgWebAppStartParam');
+        }
+        if (t) window.__hnkVerifyLaunchToken = t;
+      } catch (e) {}
+    })();
+  </script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" crossorigin="anonymous"></script>

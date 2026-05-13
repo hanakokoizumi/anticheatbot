@@ -1,25 +1,67 @@
 (function () {
-  var params = new URLSearchParams(location.search);
-  var token = params.get('t');
   var tg = window.Telegram && window.Telegram.WebApp;
-  if (tg && !token) {
-    if (tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
-      token = tg.initDataUnsafe.start_param;
-    } else if (tg.initData && typeof tg.initData === 'string') {
-      try {
-        var sp = new URLSearchParams(tg.initData).get('start_param');
-        if (sp) token = sp;
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
   if (!tg) {
     var errLc = window.WebappI18n ? WebappI18n.resolveLocale(null) : 'zh-Hans';
     var errMsg = window.WebappI18n ? WebappI18n.verifyT(errLc, 'errOutsideTg') : 'Open inside Telegram';
     document.getElementById('status').innerHTML = '<span class="err">' + errMsg + '</span>';
     return;
   }
+
+  /** 必须在 tg.ready() 之前读取：Telegram 客户端常在 ready 里 replaceState 清掉 ?tgWebAppStartParam= / ?t=。 */
+  function captureVerifyTokenFromUrl() {
+    var search = new URLSearchParams(location.search);
+    var t = search.get('t');
+    if (t) return t;
+    t = search.get('tgWebAppStartParam');
+    if (t) return t;
+    if (location.hash && location.hash.length > 1) {
+      try {
+        var hp = new URLSearchParams(location.hash.replace(/^#/, ''));
+        t = hp.get('tgWebAppStartParam');
+        if (t) return t;
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    return null;
+  }
+
+  var urlTokenSnap = captureVerifyTokenFromUrl();
+
+  tg.ready();
+  tg.expand();
+
+  function readVerifyTokenFromWebApp(tgApp) {
+    if (!tgApp) return null;
+    if (tgApp.startParam != null && String(tgApp.startParam).length) {
+      return String(tgApp.startParam);
+    }
+    if (tgApp.initDataUnsafe && tgApp.initDataUnsafe.start_param) {
+      return tgApp.initDataUnsafe.start_param;
+    }
+    if (tgApp.initData && typeof tgApp.initData === 'string') {
+      try {
+        var x = new URLSearchParams(tgApp.initData).get('start_param');
+        if (x) return x;
+      } catch (e2) {
+        /* ignore */
+      }
+    }
+    return null;
+  }
+
+  function readVerifyToken(tgApp) {
+    var head =
+      typeof window.__hnkVerifyLaunchToken === 'string' && window.__hnkVerifyLaunchToken.length
+        ? window.__hnkVerifyLaunchToken
+        : null;
+    if (head) return head;
+    if (urlTokenSnap) return urlTokenSnap;
+    return captureVerifyTokenFromUrl() || readVerifyTokenFromWebApp(tgApp);
+  }
+
+  var token = readVerifyToken(tg);
+
   if (!window.WebappI18n) {
     document.getElementById('status').innerHTML = '<span class="err">Missing /shared/i18n.js</span>';
     return;
@@ -41,9 +83,6 @@
 
   var st0 = document.getElementById('status');
   if (st0) st0.textContent = t('loading');
-
-  tg.ready();
-  tg.expand();
 
   function headers() {
     return { 'X-Telegram-Init-Data': tg.initData, 'Content-Type': 'application/json' };
@@ -232,17 +271,7 @@
   async function run() {
     locale = WebappI18n.getLocale(tg);
     var st = document.getElementById('status');
-    if (!token && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
-      token = tg.initDataUnsafe.start_param;
-    }
-    if (!token && tg.initData && typeof tg.initData === 'string') {
-      try {
-        var sp2 = new URLSearchParams(tg.initData).get('start_param');
-        if (sp2) token = sp2;
-      } catch (e2) {
-        /* ignore */
-      }
-    }
+    token = readVerifyToken(tg) || token;
     if (!token) {
       st.innerHTML = '<span class="err">' + t('missingT') + '</span>';
       return;
