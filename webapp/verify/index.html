@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>入群验证</title>
+  <link rel="stylesheet" href="/shared/ui.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+  <div class="shell">
+    <div id="status" class="status-line"></div>
+    <div id="app" style="display:none">
+      <header class="topbar">
+        <h1>入群验证</h1>
+        <p class="sub">请完成以下步骤，通过后即可在群内发言。</p>
+      </header>
+      <div id="main"></div>
+      <div id="turnstile"></div>
+    </div>
+  </div>
+  <script src="/shared/i18n.js"></script>
+  <script src="/verify/verify.js"></script>
+</body>
+</html>

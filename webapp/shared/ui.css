@@ -1,0 +1,429 @@
+/* 与 Telegram WebApp 主题变量对齐：简洁、高对比、无「AI 模板」渐变 */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--tg-theme-text-color, #1a1a1a);
+  background: var(--tg-theme-bg-color, #f2f2f7);
+}
+
+.shell {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0));
+}
+
+.topbar {
+  margin-bottom: 0.75rem;
+}
+
+.topbar h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.sub {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--tg-theme-hint-color, #6b7280);
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.12rem 0.45rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  vertical-align: middle;
+  border-radius: 999px;
+  background: var(--tg-theme-secondary-bg-color, #e8e8ed);
+  color: var(--tg-theme-hint-color, #555);
+}
+
+.badge--accent {
+  background: rgba(36, 129, 204, 0.15);
+  color: var(--tg-theme-button-color, #1a5f99);
+}
+
+.card {
+  background: var(--tg-theme-secondary-bg-color, #fff);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.rules-scroll {
+  max-height: min(52vh, 22rem);
+  overflow: auto;
+  padding: 0.75rem 0.85rem;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--tg-theme-text-color, #222);
+  background: var(--tg-theme-bg-color, #fafafa);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.quiz-q {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.quiz-q:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0;
+}
+
+.quiz-q .q-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  color: var(--tg-theme-text-color, #111);
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.35rem 0;
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.choice:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.choice input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.choice span {
+  flex: 1;
+  font-size: 0.9375rem;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.08s ease;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--tg-theme-button-color, #2481cc);
+  color: var(--tg-theme-button-text-color, #fff);
+}
+
+.btn--secondary {
+  background: transparent;
+  color: var(--tg-theme-link-color, #2481cc);
+  border: 1px solid rgba(36, 129, 204, 0.35);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.toolbar .btn {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 7rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chat-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--tg-theme-bg-color, #fff);
+  color: var(--tg-theme-text-color, #111);
+  cursor: pointer;
+  white-space: pre-line;
+}
+
+.chat-item:hover {
+  border-color: rgba(36, 129, 204, 0.45);
+}
+
+.chat-item.is-active {
+  border-color: var(--tg-theme-button-color, #2481cc);
+  box-shadow: inset 0 0 0 1px rgba(36, 129, 204, 0.25);
+}
+
+.mono {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  margin: 0;
+  padding: 0.75rem;
+  max-height: 45vh;
+  overflow: auto;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.err {
+  color: #b42318;
+  font-size: 0.875rem;
+}
+
+#turnstile {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+}
+
+.status-line {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--tg-theme-hint-color, #666);
+  font-size: 0.9375rem;
+}
+
+.shell--wide {
+  max-width: 36rem;
+}
+
+.section-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--tg-theme-text-color, #111);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.field {
+  margin-bottom: 0.85rem;
+}
+
+.field label,
+.field .field-label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.8125rem;
+  color: var(--tg-theme-hint-color, #6b7280);
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  color: var(--tg-theme-text-color, #111);
+  background: var(--tg-theme-bg-color, #fff);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 4.5rem;
+}
+
+.field textarea.textarea-lg {
+  min-height: 10rem;
+}
+
+.field--check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.field--check input {
+  width: auto;
+}
+
+.field--check label {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--tg-theme-text-color, #222);
+}
+
+.quiz-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 0.875rem;
+}
+
+.quiz-row:last-child {
+  border-bottom: none;
+}
+
+.quiz-row__meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.quiz-row__actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.btn--sm {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  width: auto;
+  min-width: 0;
+}
+
+.stats-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem 1rem;
+  font-size: 0.875rem;
+}
+
+.stats-dl dt {
+  margin: 0;
+  color: var(--tg-theme-hint-color, #666);
+}
+
+.stats-dl dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
+.lang-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.lang-bar select {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8125rem;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--tg-theme-bg-color, #fff);
+  color: inherit;
+}
+
+.banner {
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  margin-bottom: 0.75rem;
+  background: rgba(36, 129, 204, 0.1);
+  border: 1px solid rgba(36, 129, 204, 0.2);
+  color: var(--tg-theme-text-color, #333);
+}
+
+.banner--warn {
+  background: rgba(180, 35, 24, 0.08);
+  border-color: rgba(180, 35, 24, 0.2);
+  color: #7a1e16;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0));
+  transform: translateX(-50%);
+  z-index: 50;
+  max-width: 90vw;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  background: rgba(30, 30, 30, 0.88);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+.toast--err {
+  background: rgba(120, 24, 24, 0.92);
+}
+
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  margin: 0.5rem -1rem -1rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0));
+  background: color-mix(in srgb, var(--tg-theme-bg-color, #f2f2f7) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}

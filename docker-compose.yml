@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bot
+      POSTGRES_PASSWORD: bot
+      POSTGRES_DB: bot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot -d bot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      # 覆盖 .env 中的 SQLite URL，使容器内始终连 compose 网络中的 Postgres
+      DATABASE_URL: postgresql+asyncpg://bot:bot@db:5432/bot
+      # 包在 site-packages 时 __file__ 不在仓库内；显式指向镜像内 webapp，避免 cwd 异常时静态资源 404
+      WEBAPP_ROOT: /app/webapp
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
