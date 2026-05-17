@@ -15,7 +15,7 @@
   tg.ready();
   tg.expand();
 
-  let locale = WebappI18n.getLocale(tg);
+  let locale = WebappI18n.normalizeLocale(WebappI18n.getLocale(tg));
   const params = new URLSearchParams(location.search);
   let chatId = params.get('chat_id');
 
@@ -85,12 +85,33 @@
     }, 3200);
   }
 
+  function updateGroupScopeVisibility() {
+    var scope = document.getElementById('admin_group_scope');
+    var hint = document.getElementById('admin_pick_hint');
+    var hasChat = Boolean(chatId);
+    if (scope) scope.classList.toggle('hidden', !hasChat);
+    if (hint) {
+      var n = document.querySelectorAll('#chats .chat-item').length;
+      hint.classList.toggle('hidden', hasChat || n <= 1);
+    }
+  }
+
   function setActiveChat(id) {
     chatId = String(id);
-    document.getElementById('cid').textContent = chatId;
+    var cidEl = document.getElementById('cid');
+    var btn = document.querySelector('.chat-item[data-cid="' + chatId + '"]');
+    var titleOnly = '—';
+    if (btn && btn.textContent) {
+      var first = btn.textContent.split('\n')[0].trim();
+      if (first) titleOnly = first;
+    } else {
+      titleOnly = at('pickChat');
+    }
+    if (cidEl) cidEl.textContent = titleOnly;
     document.querySelectorAll('.chat-item').forEach(function (el) {
       el.classList.toggle('is-active', el.dataset.cid === chatId);
     });
+    updateGroupScopeVisibility();
   }
 
   function valBool(id) {
@@ -131,6 +152,10 @@
     setVal('f_verify_timeout_seconds', s.verify_timeout_seconds);
     setCheck('f_kick_on_verify_timeout', s.kick_on_verify_timeout);
     setCheck('f_turnstile_enabled', s.turnstile_enabled);
+    setCheck('f_delete_join_message', s.delete_join_message);
+    setCheck('f_block_guest_bots', s.block_guest_bots);
+    setVal('f_post_verify_behavior', s.post_verify_behavior || 'delete_only');
+    setVal('f_welcome_message_markdown', s.welcome_message_markdown || '');
     setVal('f_rules_markdown', s.rules_markdown || '');
     setVal('f_canonical_locale', s.canonical_locale || 'zh-Hans');
     setCheck('f_llm_translation_enabled', s.llm_translation_enabled);
@@ -146,6 +171,7 @@
     setVal('f_llm_min_confidence_action', s.llm_min_confidence_action);
     setVal('f_spam_action', s.spam_action || 'delete');
     syncVerifyModeBlocks();
+    syncPostVerifyWelcomeBlock();
   }
 
   function syncVerifyModeBlocks() {
@@ -154,6 +180,12 @@
     var quizB = document.getElementById('admin_block_quiz_mode');
     if (rulesB) rulesB.classList.toggle('hidden', mode !== 'rules_ack');
     if (quizB) quizB.classList.toggle('hidden', mode !== 'quiz');
+  }
+
+  function syncPostVerifyWelcomeBlock() {
+    var beh = valStr('f_post_verify_behavior') || 'delete_only';
+    var w = document.getElementById('admin_block_welcome');
+    if (w) w.classList.toggle('hidden', beh !== 'welcome');
   }
 
   function collectPatchBody() {
@@ -173,6 +205,12 @@
       verify_timeout_seconds: valInt('f_verify_timeout_seconds', 180),
       kick_on_verify_timeout: valBool('f_kick_on_verify_timeout'),
       turnstile_enabled: valBool('f_turnstile_enabled'),
+      delete_join_message: valBool('f_delete_join_message'),
+      block_guest_bots: valBool('f_block_guest_bots'),
+      post_verify_behavior: valStr('f_post_verify_behavior') || 'delete_only',
+      welcome_message_markdown: document.getElementById('f_welcome_message_markdown')
+        ? document.getElementById('f_welcome_message_markdown').value
+        : '',
       rules_markdown: document.getElementById('f_rules_markdown')
         ? document.getElementById('f_rules_markdown').value
         : '',
@@ -199,6 +237,7 @@
     if (!list.length) {
       box.innerHTML =
         '<p class="sub" style="margin:0">' + escapeHtml(at('noChats')) + '</p>';
+      updateGroupScopeVisibility();
       return;
     }
     list.forEach(function (c) {
@@ -216,6 +255,7 @@
     if (!chatId && list.length === 1) setActiveChat(list[0].chat_id);
     if (chatId) setActiveChat(chatId);
     else document.getElementById('cid').textContent = at('pickChat');
+    updateGroupScopeVisibility();
   }
 
   async function loadSettingsAndQuiz() {
@@ -521,9 +561,13 @@
   if (verifyModeEl) {
     verifyModeEl.addEventListener('change', syncVerifyModeBlocks);
   }
+  var postVerifyBehEl = document.getElementById('f_post_verify_behavior');
+  if (postVerifyBehEl) {
+    postVerifyBehEl.addEventListener('change', syncPostVerifyWelcomeBlock);
+  }
 
   document.getElementById('adminUiLocale').addEventListener('change', function () {
-    locale = this.value;
+    locale = WebappI18n.normalizeLocale(this.value);
     WebappI18n.setLocale(locale);
     refreshAdminI18n();
     if (chatId) {
@@ -532,11 +576,13 @@
       });
     } else {
       syncVerifyModeBlocks();
+      syncPostVerifyWelcomeBlock();
     }
   });
 
   refreshAdminI18n();
   syncVerifyModeBlocks();
+  syncPostVerifyWelcomeBlock();
 
   (async function init() {
     var st = document.getElementById('status');
@@ -544,6 +590,8 @@
       await loadChats();
       st.style.display = 'none';
       document.getElementById('panel').classList.remove('hidden');
+      refreshAdminI18n();
+      updateGroupScopeVisibility();
       if (chatId) await loadSettingsAndQuiz();
     } catch (e) {
       st.innerHTML = '<span class="err">' + escapeHtml(e.message) + '</span>';

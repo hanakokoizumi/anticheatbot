@@ -17,13 +17,20 @@
     if (location.hash && location.hash.length > 1) {
       try {
         var hp = new URLSearchParams(location.hash.replace(/^#/, ''));
-        t = hp.get('tgWebAppStartParam');
+        t = hp.get('tgWebAppStartParam') || hp.get('t');
         if (t) return t;
       } catch (e) {
         /* ignore */
       }
     }
     return null;
+  }
+
+  function normalizeVerifyToken(raw) {
+    if (raw == null) return null;
+    var v = String(raw).trim();
+    if (!v || v === 'undefined' || v === 'null') return null;
+    return v;
   }
 
   var urlTokenSnap = captureVerifyTokenFromUrl();
@@ -36,8 +43,9 @@
     if (tgApp.startParam != null && String(tgApp.startParam).length) {
       return String(tgApp.startParam);
     }
-    if (tgApp.initDataUnsafe && tgApp.initDataUnsafe.start_param) {
-      return tgApp.initDataUnsafe.start_param;
+    if (tgApp.initDataUnsafe && tgApp.initDataUnsafe.start_param != null) {
+      var sp = String(tgApp.initDataUnsafe.start_param).trim();
+      if (sp) return sp;
     }
     if (tgApp.initData && typeof tgApp.initData === 'string') {
       try {
@@ -57,10 +65,47 @@
         : null;
     if (head) return head;
     if (urlTokenSnap) return urlTokenSnap;
+    try {
+      var persisted = sessionStorage.getItem('hnk_verify_t');
+      if (persisted) return persisted;
+    } catch (e4) {
+      /* ignore */
+    }
     return captureVerifyTokenFromUrl() || readVerifyTokenFromWebApp(tgApp);
   }
 
-  var token = readVerifyToken(tg);
+  function readVerifyTokenNorm(tgApp) {
+    return normalizeVerifyToken(readVerifyToken(tgApp));
+  }
+
+  function redirectToAdminNoToken() {
+    var adminUrl = '/admin/index.html';
+    try {
+      var wch = tg.initDataUnsafe && tg.initDataUnsafe.chat;
+      if (wch && wch.id != null) {
+        adminUrl += '?chat_id=' + encodeURIComponent(String(wch.id));
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    var stEl = document.getElementById('status');
+    if (stEl) {
+      stEl.style.display = 'block';
+      if (window.WebappI18n) {
+        stEl.textContent = WebappI18n.verifyT(WebappI18n.getLocale(tg), 'redirectAdmin');
+      } else {
+        stEl.textContent = 'Redirecting…';
+      }
+    }
+    try {
+      sessionStorage.removeItem('hnk_verify_t');
+    } catch (rs) {
+      /* ignore */
+    }
+    location.replace(adminUrl);
+  }
+
+  var token = null;
 
   if (!window.WebappI18n) {
     document.getElementById('status').innerHTML = '<span class="err">Missing /shared/i18n.js</span>';
@@ -73,6 +118,35 @@
     return WebappI18n.verifyT(locale, key, vars);
   }
 
+  /** Map plain-text API errors to localized verify strings (aiohttp uses raw text bodies). */
+  function userFacingApiError(rawMsg) {
+    var s = String(rawMsg == null ? '' : rawMsg).trim();
+    var low = s.toLowerCase();
+    var map = {
+      'bad token': 'errBadToken',
+      'token used': 'errTokenUsed',
+      'token expired': 'errTokenExpired',
+      'wrong verify_mode': 'errWrongVerifyMode',
+      'turnstile failed': 'errTurnstileFailed',
+      'missing x-telegram-init-data': 'errMissingInitData',
+      'missing t': 'missingT',
+      'missing token': 'errMissingTokenBody',
+      'missing token or answers': 'errMissingAnswers',
+      'invalid answers': 'errInvalidAnswers',
+      'bad hash': 'errInitDataInvalid',
+      'empty init_data': 'errInitDataInvalid',
+      'missing hash': 'errInitDataInvalid',
+      'missing auth_date': 'errInitDataInvalid',
+      'bad auth_date': 'errInitDataInvalid',
+      'auth_date too old': 'errInitDataExpired',
+      'bad user json': 'errInitDataInvalid',
+      'missing user id': 'errInitDataInvalid',
+      'bad user id': 'errInitDataInvalid',
+    };
+    var key = map[low];
+    return key ? t(key) : s;
+  }
+
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;')
@@ -81,11 +155,19 @@
       .replace(/"/g, '&quot;');
   }
 
-  var st0 = document.getElementById('status');
-  if (st0) st0.textContent = t('loading');
-
   function headers() {
     return { 'X-Telegram-Init-Data': tg.initData, 'Content-Type': 'application/json' };
+  }
+
+  /** Non-owner opened this link: server returns JSON error; close Mini App without banner. */
+  function tryCloseWrongVerifySubject(res, data) {
+    if (res.status !== 403 || !data || data.error !== 'wrong_verify_subject') return false;
+    try {
+      tg.close();
+    } catch (cl) {
+      /* ignore */
+    }
+    return true;
   }
 
   async function api(path, opts) {
@@ -108,6 +190,11 @@
       data = { message: text };
     }
     if (!r.ok) {
+      if (tryCloseWrongVerifySubject(r, data)) {
+        var silent = new Error('');
+        silent.silentClose = true;
+        throw silent;
+      }
       var d = data.detail;
       var msg =
         typeof d === 'string'
@@ -119,7 +206,9 @@
                 })
                 .join('; ')
             : data.message || text || String(r.status);
-      throw new Error(msg);
+      var err = new Error(userFacingApiError(msg));
+      err.verifyRaw = String(msg).trim().toLowerCase();
+      throw err;
     }
     return data;
   }
@@ -178,6 +267,11 @@
   }
 
   function showVerifySuccessThenClose() {
+    try {
+      sessionStorage.removeItem('hnk_verify_t');
+    } catch (rs2) {
+      /* ignore */
+    }
     var app = document.getElementById('app');
     if (app) app.style.display = 'none';
     var st = document.getElementById('status');
@@ -243,7 +337,8 @@
       locale = WebappI18n.getLocale(tg);
       setErr('');
       run().catch(function (e) {
-        setErr(e.message);
+        if (e && e.silentClose) return;
+        setErr(userFacingApiError(e.message));
       });
     });
     bar.appendChild(lab);
@@ -271,9 +366,9 @@
   async function run() {
     locale = WebappI18n.getLocale(tg);
     var st = document.getElementById('status');
-    token = readVerifyToken(tg) || token;
+    token = readVerifyTokenNorm(tg) || token;
     if (!token) {
-      st.innerHTML = '<span class="err">' + t('missingT') + '</span>';
+      redirectToAdminNoToken();
       return;
     }
     st.textContent = t('loading');
@@ -285,7 +380,17 @@
     try {
       sess = await fetchSession();
     } catch (e) {
-      st.innerHTML = '<span class="err">' + escapeHtml(e.message) + '</span>';
+      if (e && e.silentClose) return;
+      if (e && e.verifyRaw === 'missing t') {
+        try {
+          sessionStorage.removeItem('hnk_verify_t');
+        } catch (rs3) {
+          /* ignore */
+        }
+        redirectToAdminNoToken();
+        return;
+      }
+      st.innerHTML = '<span class="err">' + escapeHtml(userFacingApiError(e.message)) + '</span>';
       return;
     }
     st.style.display = 'none';
@@ -368,7 +473,8 @@
         showVerifySuccessThenClose();
       } catch (e) {
         agree.disabled = false;
-        setErr(e.message);
+        if (e && e.silentClose) return;
+        setErr(userFacingApiError(e.message));
       }
     });
     actions.appendChild(agree);
@@ -468,6 +574,7 @@
         }
         if (!res.ok) {
           btn.disabled = false;
+          if (tryCloseWrongVerifySubject(res, data)) return;
           if (res.status === 403 && (data.score != null || data.max_score != null || data.need != null)) {
             var need = data.need != null ? data.need : sess.quiz_pass_score_threshold;
             setErr(
@@ -483,26 +590,60 @@
               (typeof data.detail === 'string' && data.detail) ||
               text ||
               String(res.status);
-            setErr(errTxt);
+            setErr(userFacingApiError(errTxt));
           }
           return;
         }
         showVerifySuccessThenClose();
       } catch (e) {
         btn.disabled = false;
+        if (e && e.silentClose) return;
         var msg = e && e.message ? String(e.message) : '';
         var isNet =
           (typeof TypeError !== 'undefined' && e instanceof TypeError) ||
           msg === 'Failed to fetch' ||
           /network|fetch/i.test(msg);
-        setErr(isNet ? t('networkError') : msg);
+        setErr(isNet ? t('networkError') : userFacingApiError(msg));
       }
     });
     card.appendChild(form);
     main.appendChild(card);
   }
 
-  run().catch(function (e) {
-    document.getElementById('status').innerHTML = '<span class="err">' + escapeHtml(e.message) + '</span>';
-  });
+  function kickoffVerify() {
+    function go(tok) {
+      token = tok;
+      var st0 = document.getElementById('status');
+      if (st0) st0.textContent = t('loading');
+      run().catch(function (e) {
+        if (e && e.silentClose) return;
+        if (e && e.verifyRaw === 'missing t') {
+          try {
+            sessionStorage.removeItem('hnk_verify_t');
+          } catch (rs4) {
+            /* ignore */
+          }
+          redirectToAdminNoToken();
+          return;
+        }
+        document.getElementById('status').innerHTML =
+          '<span class="err">' + escapeHtml(userFacingApiError(e.message)) + '</span>';
+      });
+    }
+    var tok0 = readVerifyTokenNorm(tg);
+    if (tok0) {
+      go(tok0);
+      return;
+    }
+    setTimeout(function () {
+      var tok1 = readVerifyTokenNorm(tg);
+      if (tok1) {
+        go(tok1);
+        return;
+      }
+      redirectToAdminNoToken();
+    }, 150);
+  }
+
+  kickoffVerify();
 })();

@@ -18,6 +18,44 @@ from anticheatbot.web.json_body import json_object
 
 log = logging.getLogger(__name__)
 
+_ADMIN_BOOL_KEYS = frozenset(
+    {
+        "verification_enabled",
+        "kick_on_verify_timeout",
+        "turnstile_enabled",
+        "delete_join_message",
+        "block_guest_bots",
+        "llm_translation_enabled",
+        "llm_enabled",
+    }
+)
+
+
+def _coerce_admin_settings_value(key: str, value: object) -> Any:
+    """Normalize JSON patch values so ORM columns always get correct Python types (e.g. bool, not str)."""
+    if key in _ADMIN_BOOL_KEYS:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(int(value))
+        if value is None:
+            return False
+        if isinstance(value, str):
+            s = value.strip().lower()
+            if s in ("1", "true", "yes", "on"):
+                return True
+            if s in ("0", "false", "no", "off", ""):
+                return False
+        raise web.HTTPBadRequest(text=f"invalid boolean for {key}")
+    if key == "post_verify_behavior":
+        v = str(value).strip().lower() if value is not None else ""
+        if v not in ("delete_only", "welcome"):
+            raise web.HTTPBadRequest(text="bad post_verify_behavior")
+        return v
+    if key == "welcome_message_markdown":
+        return "" if value is None else str(value)
+    return value
+
 
 def _parse_init(request: web.Request, settings: Settings) -> dict[str, Any]:
     raw = request.headers.get("X-Telegram-Init-Data")
@@ -131,6 +169,10 @@ async def admin_settings_get(request: web.Request) -> web.Response:
             "verify_timeout_seconds": gs.verify_timeout_seconds,
             "kick_on_verify_timeout": gs.kick_on_verify_timeout,
             "turnstile_enabled": gs.turnstile_enabled,
+            "delete_join_message": gs.delete_join_message,
+            "post_verify_behavior": gs.post_verify_behavior,
+            "welcome_message_markdown": gs.welcome_message_markdown,
+            "block_guest_bots": gs.block_guest_bots,
             "rules_markdown": gs.rules_markdown,
             "canonical_locale": gs.canonical_locale,
             "llm_translation_enabled": gs.llm_translation_enabled,
@@ -159,6 +201,10 @@ async def admin_settings_patch(request: web.Request) -> web.Response:
         "verify_timeout_seconds",
         "kick_on_verify_timeout",
         "turnstile_enabled",
+        "delete_join_message",
+        "post_verify_behavior",
+        "welcome_message_markdown",
+        "block_guest_bots",
         "rules_markdown",
         "canonical_locale",
         "llm_translation_enabled",
@@ -178,7 +224,7 @@ async def admin_settings_patch(request: web.Request) -> web.Response:
         for k, v in body.items():
             if k not in allowed:
                 continue
-            setattr(gs, k, v)
+            setattr(gs, k, _coerce_admin_settings_value(k, v))
         await session.flush()
         session.add(
             AuditEvent(

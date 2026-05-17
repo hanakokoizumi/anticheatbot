@@ -28,6 +28,12 @@ class GroupSettings(Base):
     verify_timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=180)
     kick_on_verify_timeout: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     turnstile_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    delete_join_message: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    post_verify_behavior: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="delete_only"
+    )  # delete_only | welcome
+    welcome_message_markdown: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    block_guest_bots: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     rules_markdown: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
@@ -65,6 +71,8 @@ class VerifyToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    invite_message_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    invite_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class UserChatState(Base):

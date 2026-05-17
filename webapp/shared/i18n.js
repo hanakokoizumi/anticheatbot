@@ -16,17 +16,22 @@
     return 'en';
   }
 
+  /** Coerce any bad / missing locale so ADMIN / VERIFY lookups never use ADMIN[undefined]. */
+  function normalizeLocale(lc) {
+    if (lc === 'zh-Hans' || lc === 'en' || lc === 'ja' || lc === 'ko') return lc;
+    return 'zh-Hans';
+  }
+
   function getLocale(tg) {
     var s = localStorage.getItem(STORAGE);
+    if (s) s = String(s).trim();
     if (s === 'zh-Hans' || s === 'en' || s === 'ja' || s === 'ko') return s;
     var u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
-    return resolveLocale(u && u.language_code);
+    return normalizeLocale(resolveLocale(u && u.language_code));
   }
 
   function setLocale(lc) {
-    if (lc === 'zh-Hans' || lc === 'en' || lc === 'ja' || lc === 'ko') {
-      localStorage.setItem(STORAGE, lc);
-    }
+    localStorage.setItem(STORAGE, normalizeLocale(lc));
   }
 
   function pick(row, k) {
@@ -53,6 +58,17 @@
       lblVerifyTimeout: '验证超时（秒）',
       lblKickTimeout: '超时踢出',
       lblTurnstile: '启用 Cloudflare Turnstile',
+      lblDeleteJoinMessage: '入群时删除系统入群消息',
+      hintDeleteJoinMessage:
+        '仅对「xxx 加入了群组」等由 new_chat_members 触发的消息有效；部分客户端/论坛入群事件无对应消息可删。',
+      lblBlockGuestBots: '拦截 Guest Bot 垃圾消息',
+      hintBlockGuestBots:
+        '开启后：在群内检测到 Telegram「访客机器人」上下文（guest_query_id / guest_bot_caller_*）或 guest_message 更新时立即删消息。机器人需有删除消息权限；依赖较新的 Bot API。',
+      lblPostVerifyBehavior: '验证通过后',
+      optPostVerifyDeleteOnly: '仅删除验证邀请（不额外发消息）',
+      optPostVerifyWelcome: '发送欢迎消息',
+      lblWelcomeMessage: '欢迎消息正文',
+      phWelcomeMessage: '示例：欢迎 {mention} 入群！占位符：{mention}、{username}、{user_id}。按 HTML 发送。',
       sectionRules: '群规（Markdown）',
       lblRulesBody: '正文',
       phRules: '支持 Markdown 文本',
@@ -103,6 +119,7 @@
       statsEvt_verify_quiz_fail: '验证：问卷未通过',
       statsEvt_verify_quiz_ok: '验证：问卷通过',
       statsEvt_llm_action_delete: 'LLM：删除消息',
+      statsEvt_guest_bot_message_deleted: 'Guest Bot：已删除消息',
       langLabel: '界面语言',
       langOptZh: '简体中文',
       langOptEn: 'English',
@@ -110,6 +127,7 @@
       langOptKo: '한국어',
       noChats: '暂无已知群组。请先在群内使用机器人，或由全局管理员从链接带 chat_id 打开。',
       pickChat: '请选择一个群',
+      hintSelectGroupForSettings: '请先在上方的群组列表中点选一个群，再编辑下方设置。',
       unnamed: '未命名群',
       statsLoading: '加载中…',
       statsEmpty: '该时段内暂无事件。',
@@ -148,6 +166,18 @@
       lblVerifyTimeout: 'Verification timeout (seconds)',
       lblKickTimeout: 'Kick on timeout',
       lblTurnstile: 'Enable Cloudflare Turnstile',
+      lblDeleteJoinMessage: 'Delete system join messages',
+      hintDeleteJoinMessage:
+        'Applies only when Telegram delivers a join message (new_chat_members). Some join flows have nothing to delete.',
+      lblBlockGuestBots: 'Block Guest Bot spam',
+      hintBlockGuestBots:
+        'When enabled, deletes messages tied to Telegram Guest Bot context (guest_query_id / guest_bot_caller_* fields) and guest_message updates. The bot needs delete permissions; requires a recent Bot API.',
+      lblPostVerifyBehavior: 'After verification passes',
+      optPostVerifyDeleteOnly: 'Only remove the verify invite (default)',
+      optPostVerifyWelcome: 'Send a welcome message',
+      lblWelcomeMessage: 'Welcome message body',
+      phWelcomeMessage:
+        'Example: Welcome {mention}! Placeholders: {mention}, {username}, {user_id}. Sent as HTML.',
       sectionRules: 'Rules (Markdown)',
       lblRulesBody: 'Body',
       phRules: 'Markdown supported',
@@ -200,6 +230,7 @@
       statsEvt_verify_quiz_fail: 'Verification: quiz failed',
       statsEvt_verify_quiz_ok: 'Verification: quiz passed',
       statsEvt_llm_action_delete: 'LLM: message deleted',
+      statsEvt_guest_bot_message_deleted: 'Guest bot: message deleted',
       langLabel: 'UI language',
       langOptZh: '简体中文',
       langOptEn: 'English',
@@ -207,6 +238,7 @@
       langOptKo: '한국어',
       noChats: 'No known groups yet. Use the bot in a group first, or open with chat_id (global admin).',
       pickChat: 'Select a group',
+      hintSelectGroupForSettings: 'Tap a group in the list above to show and edit settings below.',
       unnamed: 'Untitled group',
       statsLoading: 'Loading…',
       statsEmpty: 'No events in this period.',
@@ -245,6 +277,18 @@
       lblVerifyTimeout: '認証タイムアウト（秒）',
       lblKickTimeout: 'タイムアウトでキック',
       lblTurnstile: 'Cloudflare Turnstile を有効化',
+      lblDeleteJoinMessage: '参加時のシステム参加メッセージを削除',
+      hintDeleteJoinMessage:
+        '「○○が参加しました」等 new_chat_members 由来のメッセージにのみ有効。クライアントによっては削除対象がありません。',
+      lblBlockGuestBots: 'Guest Bot スパムを削除',
+      hintBlockGuestBots:
+        '有効にすると、Guest Bot 関連（guest_query_id / guest_bot_caller_*）または guest_message 更新のメッセージを即削除します。削除権限と新しい Bot API が必要です。',
+      lblPostVerifyBehavior: '認証通過後',
+      optPostVerifyDeleteOnly: '認証招待のみ削除（追加メッセージなし）',
+      optPostVerifyWelcome: 'ウェルカムメッセージを送信',
+      lblWelcomeMessage: 'ウェルカム本文',
+      phWelcomeMessage:
+        '例：{mention} さん、ようこそ！ プレースホルダー: {mention}、{username}、{user_id}。HTML として送信されます。',
       sectionRules: 'ルール（Markdown）',
       lblRulesBody: '本文',
       phRules: 'Markdown 対応',
@@ -297,6 +341,7 @@
       statsEvt_verify_quiz_fail: '認証：クイズ不合格',
       statsEvt_verify_quiz_ok: '認証：クイズ合格',
       statsEvt_llm_action_delete: 'LLM：メッセージ削除',
+      statsEvt_guest_bot_message_deleted: 'Guest Bot：メッセージ削除',
       langLabel: '表示言語',
       langOptZh: '简体中文',
       langOptEn: 'English',
@@ -304,6 +349,7 @@
       langOptKo: '한국어',
       noChats: '既知のグループがありません。先にグループでボットを利用するか、全体管理者は chat_id 付きで開いてください。',
       pickChat: 'グループを選択してください',
+      hintSelectGroupForSettings: '上の一覧からグループを選ぶと、下の設定を表示・編集できます。',
       unnamed: '名称未設定',
       statsLoading: '読み込み中…',
       statsEmpty: 'この期間にイベントはありません。',
@@ -342,6 +388,18 @@
       lblVerifyTimeout: '인증 제한 시간(초)',
       lblKickTimeout: '시간 초과 시 추방',
       lblTurnstile: 'Cloudflare Turnstile 사용',
+      lblDeleteJoinMessage: '입장 시 시스템 입장 메시지 삭제',
+      hintDeleteJoinMessage:
+        '「xxx님이 그룹에 참여했습니다」 등 new_chat_members 로 온 메시지에만 적용됩니다. 삭제할 메시지가 없을 수 있습니다.',
+      lblBlockGuestBots: 'Guest Bot 스팸 차단',
+      hintBlockGuestBots:
+        '켜면 Guest Bot 관련(guest_query_id / guest_bot_caller_*) 또는 guest_message 업데이트 메시지를 즉시 삭제합니다. 삭제 권한과 최신 Bot API가 필요합니다.',
+      lblPostVerifyBehavior: '인증 통과 후',
+      optPostVerifyDeleteOnly: '인증 초대만 삭제(추가 메시지 없음)',
+      optPostVerifyWelcome: '환영 메시지 보내기',
+      lblWelcomeMessage: '환영 메시지 본문',
+      phWelcomeMessage:
+        '예: {mention} 님 환영합니다! 플레이스홀더: {mention}, {username}, {user_id}. HTML 로 전송됩니다.',
       sectionRules: '규칙(Markdown)',
       lblRulesBody: '본문',
       phRules: 'Markdown 지원',
@@ -394,6 +452,7 @@
       statsEvt_verify_quiz_fail: '인증: 퀴즈 불합격',
       statsEvt_verify_quiz_ok: '인증: 퀴즈 합격',
       statsEvt_llm_action_delete: 'LLM: 메시지 삭제',
+      statsEvt_guest_bot_message_deleted: 'Guest Bot: 메시지 삭제',
       langLabel: '표시 언어',
       langOptZh: '简体中文',
       langOptEn: 'English',
@@ -401,6 +460,7 @@
       langOptKo: '한국어',
       noChats: '알려진 그룹이 없습니다. 먼저 그룹에서 봇을 사용하거나, 전역 관리자는 chat_id로 여세요.',
       pickChat: '그룹을 선택하세요',
+      hintSelectGroupForSettings: '위 목록에서 그룹을 누르면 아래 설정이 표시되고 편집할 수 있습니다.',
       unnamed: '이름 없음',
       statsLoading: '불러오는 중…',
       statsEmpty: '이 기간에 이벤트가 없습니다.',
@@ -440,7 +500,21 @@
       turnstileLoadFailed: '人机验证脚本未能加载，请检查网络或广告拦截后重试。',
       quizEmptyBank: '管理员尚未添加题目，请稍后再试或联系群管理。',
       verifySuccess: '验证通过，即将关闭页面…',
+      redirectAdmin: '正在打开管理后台…',
       networkError: '网络异常，请稍后重试。',
+      errBadToken:
+        '无法验证此链接。请用入群时的同一 Telegram 账号打开机器人发的最新链接；若仍失败，请确认机器人进程与网页是否使用同一数据库（勿混用本机 SQLite 与 Docker Postgres），或退群后重新加入获取新链接。',
+      errTokenUsed: '此验证链接已使用过。请关闭页面后重新入群，向机器人索取新链接。',
+      errTokenExpired: '验证已超时。请关闭页面后退群再进群，或联系管理员延长超时时间。',
+      errWrongVerifyMode: '群验证方式已变更。请关闭本页，从群内机器人消息里的按钮重新打开。',
+      errTurnstileFailed: '人机验证未通过，请重试。',
+      errMissingInitData: '未能读取 Telegram 身份。请完全关闭 Mini App 后，从群内验证按钮重新打开。',
+      errMissingTokenBody: '缺少验证参数。请从机器人发送的验证入口重新打开，勿手动改链接。',
+      errMissingAnswers: '缺少作答内容，请完成问卷后再提交。',
+      errInvalidAnswers: '答案格式无效，请刷新页面后重试。',
+      errInitDataInvalid:
+        '无法校验 Telegram 登录信息（常见于机器人 Token 与当前网页不匹配）。请确认 .env 的 BOT_TOKEN 与 @BotFather 一致，并从群内按钮重新打开。',
+      errInitDataExpired: '登录信息已过期。请关闭 Mini App 后重新打开验证链接。',
       langOptZh: '简体中文',
       langOptEn: 'English',
       langOptJa: '日本語',
@@ -463,7 +537,21 @@
       turnstileLoadFailed: 'Turnstile script failed to load. Check network or ad blockers and retry.',
       quizEmptyBank: 'No quiz questions yet. Try again later or ask a group admin.',
       verifySuccess: 'Verified. Closing…',
+      redirectAdmin: 'Opening admin…',
       networkError: 'Network error. Please try again.',
+      errBadToken:
+        'This verification link is invalid. Open the latest link from the bot with the same Telegram account you used to join. If it keeps failing, ensure the bot and this site share one database (do not mix local SQLite with Docker Postgres), or leave and rejoin for a new link.',
+      errTokenUsed: 'This link was already used. Close the page and rejoin to get a new link.',
+      errTokenExpired: 'This verification link has expired. Close the page and rejoin, or ask an admin to extend the timeout.',
+      errWrongVerifyMode: 'The group verification mode changed. Close this page and reopen the link from the bot message in the group.',
+      errTurnstileFailed: 'Human verification failed. Please try again.',
+      errMissingInitData: 'Telegram identity (initData) is missing. Fully close the Mini App and reopen it from the group button.',
+      errMissingTokenBody: 'Verification parameter is missing. Reopen from the bot entry; do not edit the URL manually.',
+      errMissingAnswers: 'Answers are missing. Complete the quiz before submitting.',
+      errInvalidAnswers: 'Invalid answer format. Refresh and try again.',
+      errInitDataInvalid:
+        'Could not validate Telegram login (often BOT_TOKEN mismatch). Ensure .env BOT_TOKEN matches @BotFather and reopen from the group button.',
+      errInitDataExpired: 'Login data expired. Close the Mini App and reopen the verification link.',
       langOptZh: '简体中文',
       langOptEn: 'English',
       langOptJa: '日本語',
@@ -486,7 +574,21 @@
       turnstileLoadFailed: '認証スクリプトを読み込めませんでした。通信や広告ブロックを確認して再試行してください。',
       quizEmptyBank: '問題がまだありません。しばらくしてからか、管理者に連絡してください。',
       verifySuccess: '認証が完了しました。まもなく閉じます…',
+      redirectAdmin: '管理画面を開いています…',
       networkError: '通信エラー。しばらくしてから再試行してください。',
+      errBadToken:
+        'この認証リンクは無効です。参加時と同じ Telegram アカウントで、ボットからの最新リンクを開いてください。改善しない場合は、ボットとこのページが同じデータベースを参照しているか確認するか、一度退出して再参加してください。',
+      errTokenUsed: 'このリンクは既に使用済みです。ページを閉じて再参加し、新しいリンクを取得してください。',
+      errTokenExpired: '認証の期限が切れています。ページを閉じて再参加するか、管理者にタイムアウト延長を依頼してください。',
+      errWrongVerifyMode: '認証方式が変更されました。ページを閉じ、グループ内のボットメッセージから開き直してください。',
+      errTurnstileFailed: '人間確認に失敗しました。もう一度お試しください。',
+      errMissingInitData: 'Telegram の本人情報を読み取れませんでした。Mini App を完全に閉じ、グループのボタンから開き直してください。',
+      errMissingTokenBody: '認証パラメータがありません。ボットの案内から開き直し、URL を手編集しないでください。',
+      errMissingAnswers: '回答がありません。クイズを完了してから送信してください。',
+      errInvalidAnswers: '回答形式が無効です。更新して再試行してください。',
+      errInitDataInvalid:
+        'ログイン情報を検証できません（BOT_TOKEN の不一致など）。.env の BOT_TOKEN が @BotFather と一致するか確認し、グループのボタンから開き直してください。',
+      errInitDataExpired: 'ログイン情報の有効期限が切れました。Mini App を閉じて、認証リンクを開き直してください。',
       langOptZh: '简体中文',
       langOptEn: 'English',
       langOptJa: '日本語',
@@ -509,7 +611,21 @@
       turnstileLoadFailed: '인증 스크립트를 불러오지 못했습니다. 네트워크나 광고 차단을 확인한 뒤 다시 시도하세요.',
       quizEmptyBank: '아직 문항이 없습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.',
       verifySuccess: '인증되었습니다. 곧 닫힙니다…',
+      redirectAdmin: '관리 화면으로 이동 중…',
       networkError: '네트워크 오류입니다. 잠시 후 다시 시도하세요.',
+      errBadToken:
+        '이 인증 링크가 유효하지 않습니다. 가입할 때와 같은 Telegram 계정으로 봇이 보낸 최신 링크를 여세요. 계속되면 봇과 이 페이지가 같은 DB를 쓰는지 확인하거나(로컬 SQLite와 Docker Postgres 혼용 주의) 나갔다가 다시 들어와 새 링크를 받으세요.',
+      errTokenUsed: '이미 사용된 링크입니다. 페이지를 닫고 다시 들어가 새 링크를 받으세요.',
+      errTokenExpired: '인증 시간이 지났습니다. 페이지를 닫고 다시 들어가거나 관리자에게 시간 연장을 요청하세요.',
+      errWrongVerifyMode: '인증 방식이 바뀌었습니다. 페이지를 닫고 그룹 내 봇 메시지의 버튼으로 다시 여세요.',
+      errTurnstileFailed: '사람 확인에 실패했습니다. 다시 시도하세요.',
+      errMissingInitData: 'Telegram 신원 정보를 읽지 못했습니다. Mini App을 완전히 닫고 그룹 버튼에서 다시 여세요.',
+      errMissingTokenBody: '인증 매개변수가 없습니다. 봇이 안내한 링크로 다시 열고 URL을 직접 수정하지 마세요.',
+      errMissingAnswers: '답안이 없습니다. 퀴즈를 모두 작성한 뒤 제출하세요.',
+      errInvalidAnswers: '답안 형식이 올바르지 않습니다. 새로고침 후 다시 시도하세요.',
+      errInitDataInvalid:
+        'Telegram 로그인 정보를 검증할 수 없습니다(BOT_TOKEN 불일치 등). .env의 BOT_TOKEN이 @BotFather와 일치하는지 확인하고 그룹 버튼에서 다시 여세요.',
+      errInitDataExpired: '로그인 정보가 만료되었습니다. Mini App을 닫고 인증 링크를 다시 여세요.',
       langOptZh: '简体中文',
       langOptEn: 'English',
       langOptJa: '日本語',
@@ -518,6 +634,7 @@
   };
 
   function adminT(lc, k) {
+    lc = normalizeLocale(lc);
     return (
       pick(ADMIN[lc], k) ||
       pick(ADMIN.en, k) ||
@@ -534,6 +651,7 @@
   }
 
   function verifyT(lc, k, vars) {
+    lc = normalizeLocale(lc);
     var s =
       pick(VERIFY[lc], k) ||
       pick(VERIFY.en, k) ||
@@ -543,6 +661,7 @@
   }
 
   function applyAdminLocale(root, lc) {
+    lc = normalizeLocale(lc);
     var el = root || document;
     el.querySelectorAll('[data-i18n]').forEach(function (node) {
       var k = node.getAttribute('data-i18n');
@@ -566,6 +685,7 @@
 
   global.WebappI18n = {
     resolveLocale: resolveLocale,
+    normalizeLocale: normalizeLocale,
     getLocale: getLocale,
     setLocale: setLocale,
     adminT: adminT,

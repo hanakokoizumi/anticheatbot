@@ -33,8 +33,12 @@
         <h2 class="section-title" data-i18n="sectionChat">当前群组</h2>
         <p style="margin:0;font-size:1rem;font-weight:600" id="cid">—</p>
         <div id="chats" class="chat-list" style="margin-top:0.75rem"></div>
+        <p id="admin_pick_hint" class="sub hidden" style="margin:0.5rem 0 0" data-i18n="hintSelectGroupForSettings">
+          请先在上方的群组列表中点选一个群，再编辑下方设置。
+        </p>
       </div>
 
+      <div id="admin_group_scope" class="hidden">
       <div class="toolbar">
         <button type="button" class="btn btn--secondary" id="reload" data-i18n="reload">重新加载</button>
         <button type="button" class="btn btn--secondary" id="cleartr" data-i18n="clearTranslation">清除翻译缓存</button>
@@ -64,6 +68,29 @@
         <div class="field field--check">
           <input type="checkbox" id="f_turnstile_enabled" />
           <label for="f_turnstile_enabled" data-i18n="lblTurnstile">启用 Cloudflare Turnstile</label>
+        </div>
+        <div class="field field--check">
+          <input type="checkbox" id="f_delete_join_message" />
+          <label for="f_delete_join_message" data-i18n="lblDeleteJoinMessage">入群时删除入群系统消息</label>
+        </div>
+        <p class="sub" style="margin:0 0 0.5rem" data-i18n="hintDeleteJoinMessage"></p>
+        <div class="field field--check">
+          <input type="checkbox" id="f_block_guest_bots" />
+          <label for="f_block_guest_bots" data-i18n="lblBlockGuestBots">拦截 Guest Bot 垃圾消息</label>
+        </div>
+        <p class="sub" style="margin:0 0 0.5rem" data-i18n="hintBlockGuestBots"></p>
+        <div class="field">
+          <label for="f_post_verify_behavior" data-i18n="lblPostVerifyBehavior">验证通过后</label>
+          <select id="f_post_verify_behavior">
+            <option value="delete_only" data-i18n="optPostVerifyDeleteOnly">仅删除验证邀请</option>
+            <option value="welcome" data-i18n="optPostVerifyWelcome">发送欢迎消息</option>
+          </select>
+        </div>
+        <div id="admin_block_welcome" class="hidden">
+          <div class="field">
+            <label for="f_welcome_message_markdown" data-i18n="lblWelcomeMessage">欢迎消息正文</label>
+            <textarea id="f_welcome_message_markdown" class="textarea-lg" data-i18n-placeholder="phWelcomeMessage" placeholder=""></textarea>
+          </div>
         </div>
       </div>
 
@@ -177,9 +204,10 @@
         <button type="button" class="btn btn--primary" id="btnSave" data-i18n="btnSaveGroup">保存群设置</button>
         <p class="sub" style="margin:0.5rem 0 0;font-size:0.75rem" data-i18n="hintSaveBar">保存群设置不含题库；问卷模式下可多次「保存题目」添加多道题。</p>
       </div>
+      </div>
     </div>
   </div>
-  <script src="/shared/i18n.js"></script>
-  <script src="/admin/admin.js"></script>
+  <script src="/shared/i18n.js?v=3"></script>
+  <script src="/admin/admin.js?v=4"></script>
 </body>
 </html>

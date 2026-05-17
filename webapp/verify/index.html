@@ -13,9 +13,15 @@
         var t = s.get('t') || s.get('tgWebAppStartParam');
         if (!t && window.location.hash && window.location.hash.length > 1) {
           var h = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-          t = h.get('tgWebAppStartParam');
+          t = h.get('tgWebAppStartParam') || h.get('t');
         }
-        if (t) window.__hnkVerifyLaunchToken = t;
+        t = t ? String(t).trim() : '';
+        if (t) {
+          window.__hnkVerifyLaunchToken = t;
+          sessionStorage.setItem('hnk_verify_t', t);
+        } else {
+          sessionStorage.removeItem('hnk_verify_t');
+        }
       } catch (e) {}
     })();
   </script>
@@ -36,7 +42,7 @@
       <div id="turnstile"></div>
     </div>
   </div>
-  <script src="/shared/i18n.js"></script>
-  <script src="/verify/verify.js"></script>
+  <script src="/shared/i18n.js?v=2"></script>
+  <script src="/verify/verify.js?v=3"></script>
 </body>
 </html>

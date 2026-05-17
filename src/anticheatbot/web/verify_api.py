@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import json
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
 from aiohttp import web
@@ -11,17 +11,31 @@ from aiogram.exceptions import TelegramBadRequest
 from anticheatbot.config import Settings
 from anticheatbot.db.models import GroupSettings, QuizQuestion, UserChatState, VerifyQuizSession, VerifyToken
 from anticheatbot.db.session import session_scope
+from anticheatbot.handlers.verify_flow import (
+    delete_stored_verify_invite,
+    post_verify_behavior_normalized,
+    send_post_verify_welcome,
+)
 from anticheatbot.init_data import InitDataInvalidError, parse_language_code, parse_user_id, validate_init_data
 from anticheatbot.locale_data import normalize_locale
 from anticheatbot.services.audit import log_event
 from anticheatbot.services.groups import get_or_create_group_settings
 from anticheatbot.services.quiz import QuizError, draw_quiz_for_token, grade_answers
 from anticheatbot.telegram_perms import normal_member_permissions
+from anticheatbot.time_utils import coerce_utc, utc_now
 from anticheatbot.translation_service import translate_or_same
 from anticheatbot.turnstile import verify_turnstile
 from anticheatbot.web.json_body import json_object
 
 log = logging.getLogger(__name__)
+
+
+def _raise_wrong_verify_subject() -> None:
+    """Opened by a Telegram user other than the member who owns this token."""
+    raise web.HTTPForbidden(
+        text=json.dumps({"error": "wrong_verify_subject"}),
+        content_type="application/json",
+    )
 
 
 def _parse_init(request: web.Request, settings: Settings) -> dict[str, Any]:
@@ -55,11 +69,19 @@ async def verify_session(request: web.Request) -> web.Response:
 
     async with session_scope() as session:
         vt = await session.get(VerifyToken, token_str)
-        if vt is None or vt.user_id != user_id:
+        if vt is None:
+            log.warning("verify_session: unknown token prefix=%s", token_str[:16] if token_str else "")
             raise web.HTTPForbidden(text="bad token")
+        if vt.user_id != user_id:
+            log.warning(
+                "verify_session: user mismatch for token token_user_id=%s init_user_id=%s",
+                vt.user_id,
+                user_id,
+            )
+            _raise_wrong_verify_subject()
         if vt.used_at is not None:
             raise web.HTTPForbidden(text="token used")
-        if vt.expires_at < datetime.now(tz=UTC):
+        if coerce_utc(vt.expires_at) < utc_now():
             raise web.HTTPForbidden(text="token expired")
 
         gs = await get_or_create_group_settings(session, vt.chat_id)
@@ -159,13 +181,27 @@ async def verify_rules_complete(request: web.Request) -> web.Response:
     turnstile_tok = body.get("turnstile_token")
     remote_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.remote
 
+    invite_chat_id: int | None = None
+    invite_message_id: int | None = None
+    post_verify_behavior = "delete_only"
+    welcome_template = ""
+    welcome_chat_id = 0
+    welcome_user_id = 0
     async with session_scope() as session:
         vt = await session.get(VerifyToken, token_str)
-        if vt is None or vt.user_id != user_id:
+        if vt is None:
+            log.warning("verify_rules_complete: unknown token prefix=%s", token_str[:16] if token_str else "")
             raise web.HTTPForbidden(text="bad token")
+        if vt.user_id != user_id:
+            log.warning(
+                "verify_rules_complete: user mismatch token_user_id=%s init_user_id=%s",
+                vt.user_id,
+                user_id,
+            )
+            _raise_wrong_verify_subject()
         if vt.used_at is not None:
             raise web.HTTPForbidden(text="token used")
-        if vt.expires_at < datetime.now(tz=UTC):
+        if coerce_utc(vt.expires_at) < utc_now():
             raise web.HTTPForbidden(text="token expired")
 
         gs = await get_or_create_group_settings(session, vt.chat_id)
@@ -173,14 +209,22 @@ async def verify_rules_complete(request: web.Request) -> web.Response:
             raise web.HTTPBadRequest(text="wrong verify_mode")
         await _turnstile_or_403(settings, gs, turnstile_tok, remote_ip)
 
-        vt.used_at = datetime.now(tz=UTC)
+        post_verify_behavior = post_verify_behavior_normalized(gs.post_verify_behavior)
+        welcome_template = gs.welcome_message_markdown or ""
+        welcome_chat_id = vt.chat_id
+        welcome_user_id = vt.user_id
+
+        invite_chat_id = vt.invite_message_chat_id
+        invite_message_id = vt.invite_message_id
+
+        vt.used_at = utc_now()
         ucs = await session.get(UserChatState, (vt.chat_id, vt.user_id))
         if ucs is None:
-            ucs = UserChatState(chat_id=vt.chat_id, user_id=vt.user_id, verified=True, verified_at=datetime.now(tz=UTC))
+            ucs = UserChatState(chat_id=vt.chat_id, user_id=vt.user_id, verified=True, verified_at=utc_now())
             session.add(ucs)
         else:
             ucs.verified = True
-            ucs.verified_at = datetime.now(tz=UTC)
+            ucs.verified_at = utc_now()
         await session.flush()
 
         try:
@@ -201,6 +245,16 @@ async def verify_rules_complete(request: web.Request) -> web.Response:
             payload={"token": token_str[:8]},
         )
 
+    await delete_stored_verify_invite(
+        bot, invite_message_chat_id=invite_chat_id, invite_message_id=invite_message_id
+    )
+    if post_verify_behavior == "welcome":
+        await send_post_verify_welcome(
+            bot,
+            chat_id=welcome_chat_id,
+            user_id=welcome_user_id,
+            template=welcome_template,
+        )
     return web.json_response({"ok": True})
 
 
@@ -223,13 +277,27 @@ async def verify_quiz_submit(request: web.Request) -> web.Response:
     turnstile_tok = body.get("turnstile_token")
     remote_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.remote
 
+    invite_chat_id: int | None = None
+    invite_message_id: int | None = None
+    post_verify_behavior = "delete_only"
+    welcome_template = ""
+    welcome_chat_id = 0
+    welcome_user_id = 0
     async with session_scope() as session:
         vt = await session.get(VerifyToken, token_str)
-        if vt is None or vt.user_id != user_id:
+        if vt is None:
+            log.warning("verify_quiz_submit: unknown token prefix=%s", token_str[:16] if token_str else "")
             raise web.HTTPForbidden(text="bad token")
+        if vt.user_id != user_id:
+            log.warning(
+                "verify_quiz_submit: user mismatch token_user_id=%s init_user_id=%s",
+                vt.user_id,
+                user_id,
+            )
+            _raise_wrong_verify_subject()
         if vt.used_at is not None:
             raise web.HTTPForbidden(text="token used")
-        if vt.expires_at < datetime.now(tz=UTC):
+        if coerce_utc(vt.expires_at) < utc_now():
             raise web.HTTPForbidden(text="token expired")
 
         gs = await get_or_create_group_settings(session, vt.chat_id)
@@ -260,14 +328,21 @@ async def verify_quiz_submit(request: web.Request) -> web.Response:
                 status=403,
             )
 
-        vt.used_at = datetime.now(tz=UTC)
+        invite_chat_id = vt.invite_message_chat_id
+        invite_message_id = vt.invite_message_id
+        post_verify_behavior = post_verify_behavior_normalized(gs.post_verify_behavior)
+        welcome_template = gs.welcome_message_markdown or ""
+        welcome_chat_id = vt.chat_id
+        welcome_user_id = vt.user_id
+
+        vt.used_at = utc_now()
         ucs = await session.get(UserChatState, (vt.chat_id, vt.user_id))
         if ucs is None:
-            ucs = UserChatState(chat_id=vt.chat_id, user_id=vt.user_id, verified=True, verified_at=datetime.now(tz=UTC))
+            ucs = UserChatState(chat_id=vt.chat_id, user_id=vt.user_id, verified=True, verified_at=utc_now())
             session.add(ucs)
         else:
             ucs.verified = True
-            ucs.verified_at = datetime.now(tz=UTC)
+            ucs.verified_at = utc_now()
         qs = await session.get(VerifyQuizSession, token_str)
         if qs is not None:
             await session.delete(qs)
@@ -291,4 +366,14 @@ async def verify_quiz_submit(request: web.Request) -> web.Response:
             payload={"score": score},
         )
 
+    await delete_stored_verify_invite(
+        bot, invite_message_chat_id=invite_chat_id, invite_message_id=invite_message_id
+    )
+    if post_verify_behavior == "welcome":
+        await send_post_verify_welcome(
+            bot,
+            chat_id=welcome_chat_id,
+            user_id=welcome_user_id,
+            template=welcome_template,
+        )
     return web.json_response({"ok": True, "score": score})
