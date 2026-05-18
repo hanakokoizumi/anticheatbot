@@ -691,9 +691,30 @@ body {
   color: var(--tg-theme-text-color, #222);
 }
 
+.quiz-choice-add-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
+.quiz-choice-add-row .quiz-choice-add {
+  flex: 1;
+  min-width: 0;
+}
+
+.quiz-choice-add-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
 .quiz-choice-add {
   width: 100%;
-  margin-top: 0.15rem;
   padding: 0.5rem 0.65rem;
   font-size: 0.9375rem;
   font-family: inherit;

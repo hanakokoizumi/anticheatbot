@@ -1,6 +1,6 @@
 /**
  * Shared single-question editor (options list, save, reset).
- * Used by quiz-edit.html. Expects DOM ids: qf_id, qf_prompt, qf_choices_list, qf_choice_add, qf_correct (hidden), qf_save, qf_reset.
+ * Used by quiz-edit.html. Expects DOM ids: qf_id, qf_prompt, qf_choices_list, qf_choice_add, qf_choice_add_btn, qf_correct (hidden), qf_save, qf_reset.
  */
 (function (global) {
   function initAdminQuizForm(opts) {
@@ -292,6 +292,8 @@
       if (linkImp) linkImp.style.pointerEvents = disabled ? 'none' : '';
       var addInp = document.getElementById('qf_choice_add');
       if (addInp) addInp.disabled = disabled;
+      var addBtn = document.getElementById('qf_choice_add_btn');
+      if (addBtn) addBtn.disabled = disabled;
       document.querySelectorAll('.quiz-choice-row button').forEach(function (b) {
         b.disabled = disabled;
       });
@@ -373,6 +375,12 @@
       qfChoiceAdd.addEventListener('keydown', function (ev) {
         if (ev.key !== 'Enter') return;
         ev.preventDefault();
+        addQuizChoiceFromAddInput();
+      });
+    }
+    var qfChoiceAddBtn = document.getElementById('qf_choice_add_btn');
+    if (qfChoiceAddBtn) {
+      qfChoiceAddBtn.addEventListener('click', function () {
         addQuizChoiceFromAddInput();
       });
     }
