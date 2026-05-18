@@ -19,6 +19,14 @@ def test_validate_init_data_ok() -> None:
     assert parse_language_code(out) == "ja"
 
 
+def test_validate_init_data_too_large() -> None:
+    token = "123456:AA" + "c" * 30
+    # Exceeds ``_MAX_INIT_DATA_BYTES`` (16_384) in ``init_data.py``.
+    huge = "a" * 16_500
+    with pytest.raises(InitDataInvalidError, match="too large"):
+        validate_init_data(huge, bot_token=token, max_age_seconds=3600)
+
+
 def test_validate_init_data_bad_hash() -> None:
     token = "1:fake"
     raw = "auth_date=1&user=%7B%22id%22%3A1%7D&hash=deadbeef"

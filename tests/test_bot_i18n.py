@@ -32,6 +32,13 @@ def test_bot_t_known_keys_all_locales() -> None:
         assert bot_t(loc, "btn_open_verify") == MESSAGES[loc]["btn_open_verify"]
 
 
+def test_default_welcome_all_locales_has_mention_placeholder() -> None:
+    for loc in ("zh-Hans", "en", "ja", "ko"):
+        s = bot_t(loc, "default_welcome")
+        assert "{mention}" in s
+        assert len(s) > 5
+
+
 def test_bot_t_fallback_en_for_partial_locale() -> None:
     """If a locale lacked a key, bot_t falls back to en then zh-Hans — all keys present in all locales."""
     assert len(bot_t("ko", "cmd_start")) > 20

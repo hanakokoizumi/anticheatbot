@@ -12,6 +12,10 @@ class InitDataInvalidError(ValueError):
     pass
 
 
+# Telegram initData is small (user JSON + auth_date + optional fields); cap abuse via huge headers.
+_MAX_INIT_DATA_BYTES = 16_384
+
+
 def _secret_key(bot_token: str) -> bytes:
     return hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
 
@@ -20,6 +24,8 @@ def validate_init_data(init_data: str, *, bot_token: str, max_age_seconds: int) 
     """Validate Telegram WebApp initData string; returns parsed fields including user dict."""
     if not init_data:
         raise InitDataInvalidError("empty init_data")
+    if len(init_data.encode("utf-8")) > _MAX_INIT_DATA_BYTES:
+        raise InitDataInvalidError("init_data too large")
     pairs = dict(parse_qsl(init_data, keep_blank_values=True))
     received_hash = pairs.pop("hash", None)
     if not received_hash:

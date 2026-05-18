@@ -20,7 +20,7 @@ async def touch_known_chat(session: AsyncSession, chat_id: int, title: str | Non
     row = await session.get(KnownChat, chat_id)
     if row is None:
         session.add(KnownChat(chat_id=chat_id, title=title))
-    else:
+    elif title is not None:
         row.title = title
     await session.flush()
 

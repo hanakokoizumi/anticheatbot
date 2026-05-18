@@ -60,13 +60,14 @@ def create_http_app(*, bot: Bot, settings: Settings) -> web.Application:
     app.router.add_post("/api/admin/translation-cache/clear", admin_api.admin_translation_cache_clear)
     app.router.add_get("/api/admin/quiz", admin_api.admin_quiz_list)
     app.router.add_post("/api/admin/quiz", admin_api.admin_quiz_upsert)
+    app.router.add_post("/api/admin/quiz/batch", admin_api.admin_quiz_batch_import)
     app.router.add_delete("/api/admin/quiz", admin_api.admin_quiz_delete)
 
     app.router.add_get("/healthz", lambda r: web.json_response({"ok": True}))
 
     root = webapp_root()
-    app.router.add_static("/shared/", root / "shared", follow_symlinks=True, show_index=False)
-    app.router.add_static("/verify/", root / "verify", follow_symlinks=True, show_index=False)
-    app.router.add_static("/admin/", root / "admin", follow_symlinks=True, show_index=False)
+    app.router.add_static("/shared/", root / "shared", follow_symlinks=False, show_index=False)
+    app.router.add_static("/verify/", root / "verify", follow_symlinks=False, show_index=False)
+    app.router.add_static("/admin/", root / "admin", follow_symlinks=False, show_index=False)
 
     return app

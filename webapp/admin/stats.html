@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title data-skip-admin-doc-title>统计与日志</title>
+  <link rel="stylesheet" href="/shared/ui.css?v=8" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="toast" class="toast" style="display:none" aria-live="polite"></div>
+  <div class="shell shell--wide">
+    <div class="admin-sticky-head">
+      <header class="topbar topbar--nav">
+        <a
+          class="topbar-back"
+          id="linkBackAdmin"
+          href="index.html"
+          data-i18n-aria="btnBackToAdmin"
+          aria-label="返回群管理"
+          title="返回群管理"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </a>
+        <h1 class="topbar-title" data-i18n="pageTitleStats">统计与日志</h1>
+      </header>
+      <p class="sub" id="statsChatSub" style="margin:0"></p>
+    </div>
+
+    <div class="card stats-toolbar-card">
+      <div class="field" style="margin-bottom:0.5rem">
+        <label for="statsRange" data-i18n="lblStatsRange">统计天数</label>
+        <select id="statsRange">
+          <option value="1" data-i18n="statsD1">近 1 日</option>
+          <option value="7" selected data-i18n="statsD7">近 7 日</option>
+          <option value="30" data-i18n="statsD30">近 30 日</option>
+          <option value="90" data-i18n="statsD90">近 90 日</option>
+        </select>
+      </div>
+      <button type="button" class="btn btn--primary" id="btnReloadStats" data-i18n="statsReload">重新加载</button>
+    </div>
+
+    <p id="statsErr" class="status-line err" style="display:none;margin-bottom:0.75rem" role="alert"></p>
+
+    <div id="statsMain" class="hidden">
+      <div class="card">
+        <h2 class="section-title" data-i18n="statsSummarySection">统计摘要</h2>
+        <dl class="stats-summary-dl" id="statsSummaryDl"></dl>
+      </div>
+
+      <div class="stats-chart-grid">
+        <div class="card">
+          <h2 class="section-title" data-i18n="sectionStatsByDay">按日事件量</h2>
+          <p class="sub stats-chart-caption" data-i18n="chartDailyTitle">每日事件合计</p>
+          <div class="stats-chart-canvas-wrap">
+            <canvas id="chartDaily" aria-label="daily chart"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <h2 class="section-title" data-i18n="sectionStatsByType">按事件类型</h2>
+          <p class="sub stats-chart-caption" data-i18n="chartByTypeTitle">各类型事件次数</p>
+          <div class="stats-chart-canvas-wrap stats-chart-canvas-wrap--hbar">
+            <canvas id="chartByType" aria-label="by type chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="display:none">
+        <h2 class="section-title" data-i18n="sectionStatsLog">审计日志</h2>
+        <p class="sub" id="statsLogHint" style="margin:0 0 0.5rem"></p>
+        <div class="audit-log-scroll">
+          <table class="audit-table" id="auditTable">
+            <thead>
+              <tr>
+                <th data-i18n="colLogTime">时间 (UTC)</th>
+                <th data-i18n="colLogType">类型</th>
+                <th data-i18n="colLogUser">用户 ID</th>
+                <th data-i18n="colLogDetails">详情</th>
+              </tr>
+            </thead>
+            <tbody id="auditTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <p id="statsEmpty" class="sub hidden" data-i18n="statsEmpty" style="margin:0">该时段内暂无事件。</p>
+
+    <dialog id="auditDetailDialog" class="audit-detail-dialog" aria-labelledby="auditDetailHeading">
+      <div class="audit-detail-dialog__panel">
+        <div class="audit-detail-dialog__head">
+          <h3 id="auditDetailHeading" class="audit-detail-dialog__title"></h3>
+          <button type="button" class="btn btn--secondary btn--sm" id="auditDetailCloseBtn" data-i18n="btnLogDetailClose">
+            关闭
+          </button>
+        </div>
+        <div class="audit-detail-dialog__scroll">
+          <table class="payload-kv-table" id="auditDetailKvTable">
+            <thead>
+              <tr>
+                <th scope="col" data-i18n="colPayloadField">字段</th>
+                <th scope="col" data-i18n="colPayloadValue">值</th>
+              </tr>
+            </thead>
+            <tbody id="auditDetailKvTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </dialog>
+  </div>
+  <script src="/shared/i18n.js?v=14"></script>
+  <script src="/admin/stats.js?v=3"></script>
+</body>
+</html>

@@ -99,13 +99,18 @@ async def moderate_message(
     api_key: str | None,
     model: str,
     text: str,
+    mention_usernames: list[str] | None = None,
     timeout: float = 45.0,
 ) -> dict[str, Any]:
-    user_content = text[:8000]
+    payload: dict[str, Any] = {"message_text": text[:8000]}
+    if mention_usernames:
+        payload["telegram_mention_usernames"] = mention_usernames[:48]
+    user_content = json.dumps(payload, ensure_ascii=False)
     log.debug(
-        "moderate_message_request model=%s user_chars=%s endpoint=%s",
+        "moderate_message_request model=%s user_chars=%s mentions=%s endpoint=%s",
         model,
-        len(user_content),
+        len(text[:8000]),
+        len(mention_usernames or []),
         base_url.rstrip("/") + "/chat/completions",
     )
     messages = [
@@ -113,7 +118,13 @@ async def moderate_message(
             "role": "system",
             "content": (
                 'Return JSON: {"label":"ok|spam|abuse|ads","confidence":0..1,"reason":"short"} '
-                "for Telegram group moderation."
+                "for Telegram supergroup text moderation. "
+                "Label spam/ads for junk, solicitation, scams, or engagement farming. "
+                "If the message @-mentions multiple distinct usernames that end with the suffix "
+                '"bot" (case-insensitive, e.g. "@foo_bot", "@Bar_Bot") and the remaining visible text '
+                "has no substantive conversational value (mostly tags, filler punctuation, hype, "
+                "or no real on-topic discussion), classify as spam with confidence at least 0.9 "
+                "unless the message clearly contains legitimate substantive content."
             ),
         },
         {"role": "user", "content": user_content},

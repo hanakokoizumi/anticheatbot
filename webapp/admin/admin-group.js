@@ -15,9 +15,21 @@
   tg.ready();
   tg.expand();
 
+  var params = new URLSearchParams(location.search);
+  var chatId = (params.get('chat_id') || '').trim();
+  if (!chatId) {
+    document.body.innerHTML =
+      '<p class="status-line err">' + WebappI18n.adminT(WebappI18n.getLocale(tg), 'toastSelectChat') + '</p>';
+    return;
+  }
+
   let locale = WebappI18n.normalizeLocale(WebappI18n.getLocale(tg));
-  const params = new URLSearchParams(location.search);
-  let chatId = params.get('chat_id');
+  var chatTitleState = '';
+
+  var ICON_QUIZ_EDIT_SVG =
+    '<svg class="btn-ic" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+  var ICON_QUIZ_DEL_SVG =
+    '<svg class="btn-ic" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 
   function at(k) {
     return WebappI18n.adminT(locale, k);
@@ -31,6 +43,29 @@
     document.documentElement.lang = locale === 'zh-Hans' ? 'zh-Hans' : locale;
     const sel = document.getElementById('adminUiLocale');
     if (sel) sel.value = locale;
+  }
+
+  function syncGroupHeader() {
+    var displayName = chatTitleState ? chatTitleState : at('unnamed');
+    var h = document.getElementById('groupTitleHead');
+    if (h) h.textContent = displayName;
+    var back = document.getElementById('linkBackHome');
+    if (back) back.href = 'index.html';
+    var t = document.querySelector('title');
+    if (t) t.textContent = displayName;
+  }
+
+  function titleFromWebAppChat() {
+    try {
+      var ch = tg.initDataUnsafe && tg.initDataUnsafe.chat;
+      if (!ch || ch.id == null) return '';
+      if (String(ch.id) !== String(chatId)) return '';
+      var t = ch.title;
+      if (t == null || String(t).trim() === '') return '';
+      return String(t).trim();
+    } catch (e) {
+      return '';
+    }
   }
 
   function headers() {
@@ -85,35 +120,6 @@
     }, 3200);
   }
 
-  function updateGroupScopeVisibility() {
-    var scope = document.getElementById('admin_group_scope');
-    var hint = document.getElementById('admin_pick_hint');
-    var hasChat = Boolean(chatId);
-    if (scope) scope.classList.toggle('hidden', !hasChat);
-    if (hint) {
-      var n = document.querySelectorAll('#chats .chat-item').length;
-      hint.classList.toggle('hidden', hasChat || n <= 1);
-    }
-  }
-
-  function setActiveChat(id) {
-    chatId = String(id);
-    var cidEl = document.getElementById('cid');
-    var btn = document.querySelector('.chat-item[data-cid="' + chatId + '"]');
-    var titleOnly = '—';
-    if (btn && btn.textContent) {
-      var first = btn.textContent.split('\n')[0].trim();
-      if (first) titleOnly = first;
-    } else {
-      titleOnly = at('pickChat');
-    }
-    if (cidEl) cidEl.textContent = titleOnly;
-    document.querySelectorAll('.chat-item').forEach(function (el) {
-      el.classList.toggle('is-active', el.dataset.cid === chatId);
-    });
-    updateGroupScopeVisibility();
-  }
-
   function valBool(id) {
     const el = document.getElementById(id);
     return el && el.checked;
@@ -157,14 +163,10 @@
     setVal('f_post_verify_behavior', s.post_verify_behavior || 'delete_only');
     setVal('f_welcome_message_markdown', s.welcome_message_markdown || '');
     setVal('f_rules_markdown', s.rules_markdown || '');
-    setVal('f_canonical_locale', s.canonical_locale || 'zh-Hans');
+    applyCanonicalFromServer(s.canonical_locale);
     setCheck('f_llm_translation_enabled', s.llm_translation_enabled);
-    var loc = s.translation_allowed_locales;
-    setVal(
-      'f_translation_allowed_locales',
-      loc == null ? '' : typeof loc === 'string' ? loc : JSON.stringify(loc)
-    );
-    setVal('f_quiz_pass_score_threshold', s.quiz_pass_score_threshold);
+    applyAllowedLocalesFromServer(s.translation_allowed_locales);
+    setVal('f_quiz_pass_min_correct', s.quiz_pass_min_correct);
     setVal('f_quiz_draw_count', s.quiz_draw_count);
     setCheck('f_llm_enabled', s.llm_enabled);
     setVal('f_llm_max_messages', s.llm_max_messages);
@@ -172,6 +174,13 @@
     setVal('f_spam_action', s.spam_action || 'delete');
     syncVerifyModeBlocks();
     syncPostVerifyWelcomeBlock();
+    chatTitleState =
+      s.chat_title != null && String(s.chat_title).trim() !== '' ? String(s.chat_title).trim() : '';
+    if (!chatTitleState) {
+      var tw = titleFromWebAppChat();
+      if (tw) chatTitleState = tw;
+    }
+    syncGroupHeader();
   }
 
   function syncVerifyModeBlocks() {
@@ -188,17 +197,67 @@
     if (w) w.classList.toggle('hidden', beh !== 'welcome');
   }
 
-  function collectPatchBody() {
-    var locRaw = valStr('f_translation_allowed_locales');
-    var locPayload = null;
-    if (locRaw) {
-      try {
-        var parsed = JSON.parse(locRaw);
-        locPayload = Array.isArray(parsed) ? JSON.stringify(parsed) : locRaw;
-      } catch {
-        locPayload = locRaw;
-      }
+  function clearCustomCanonicalOptions() {
+    var sel = document.getElementById('f_canonical_locale');
+    if (!sel) return;
+    sel.querySelectorAll('option[data-custom-locale="1"]').forEach(function (o) {
+      o.remove();
+    });
+  }
+
+  function ensureCanonicalOption(value) {
+    var sel = document.getElementById('f_canonical_locale');
+    if (!sel || !value) return;
+    var v = String(value).trim();
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === v) return;
     }
+    var opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = v;
+    opt.setAttribute('data-custom-locale', '1');
+    sel.appendChild(opt);
+  }
+
+  function applyCanonicalFromServer(v) {
+    var sel = document.getElementById('f_canonical_locale');
+    if (!sel) return;
+    clearCustomCanonicalOptions();
+    var cv = v == null || String(v).trim() === '' ? 'zh-Hans' : String(v).trim();
+    ensureCanonicalOption(cv);
+    sel.value = cv;
+  }
+
+  function applyAllowedLocalesFromServer(raw) {
+    document.querySelectorAll('input[name="f_translation_allowed_loc"]').forEach(function (cb) {
+      cb.checked = false;
+    });
+    if (raw == null) return;
+    var str = typeof raw === 'string' ? raw.trim() : '';
+    if (!str) return;
+    try {
+      var parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (!Array.isArray(parsed)) return;
+      parsed.forEach(function (code) {
+        var c = String(code).trim();
+        document.querySelectorAll('input[name="f_translation_allowed_loc"]').forEach(function (cb) {
+          if (cb.value === c) cb.checked = true;
+        });
+      });
+    } catch (ignore) {}
+  }
+
+  function collectAllowedLocalesPayload() {
+    var picked = [];
+    document.querySelectorAll('input[name="f_translation_allowed_loc"]:checked').forEach(function (cb) {
+      picked.push(cb.value);
+    });
+    if (!picked.length) return null;
+    return JSON.stringify(picked);
+  }
+
+  function collectPatchBody() {
+    var locPayload = collectAllowedLocalesPayload();
     return {
       verification_enabled: valBool('f_verification_enabled'),
       verify_mode: valStr('f_verify_mode') || 'rules_ack',
@@ -217,8 +276,8 @@
       canonical_locale: valStr('f_canonical_locale') || 'zh-Hans',
       llm_translation_enabled: valBool('f_llm_translation_enabled'),
       translation_allowed_locales: locPayload,
-      quiz_pass_score_threshold: valInt('f_quiz_pass_score_threshold', 80),
-      quiz_draw_count: valInt('f_quiz_draw_count', 10),
+      quiz_pass_min_correct: valInt('f_quiz_pass_min_correct', 1),
+      quiz_draw_count: valInt('f_quiz_draw_count', 1),
       llm_enabled: valBool('f_llm_enabled'),
       llm_max_messages: valInt('f_llm_max_messages', 5),
       llm_min_confidence_action: valFloat('f_llm_min_confidence_action', 0.8),
@@ -226,54 +285,28 @@
     };
   }
 
-  async function loadChats() {
-    var me = await api('/api/admin/session');
-    if (me.global_admin) document.getElementById('gab').classList.remove('hidden');
-
-    var data = await api('/api/admin/chats');
-    var box = document.getElementById('chats');
-    box.innerHTML = '';
-    var list = data.chats || [];
-    if (!list.length) {
-      box.innerHTML =
-        '<p class="sub" style="margin:0">' + escapeHtml(at('noChats')) + '</p>';
-      updateGroupScopeVisibility();
-      return;
+  function setAdminGroupLoading(on) {
+    var ov = document.getElementById('adminGroupLoading');
+    var wrap = document.querySelector('.admin-group-scope-wrap');
+    if (ov) {
+      ov.classList.toggle('hidden', !on);
+      ov.setAttribute('aria-hidden', on ? 'false' : 'true');
     }
-    list.forEach(function (c) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'chat-item';
-      b.dataset.cid = String(c.chat_id);
-      b.textContent = (c.title || at('unnamed')) + '\n' + c.chat_id;
-      b.onclick = function () {
-        setActiveChat(c.chat_id);
-        loadSettingsAndQuiz();
-      };
-      box.appendChild(b);
-    });
-    if (!chatId && list.length === 1) setActiveChat(list[0].chat_id);
-    if (chatId) setActiveChat(chatId);
-    else document.getElementById('cid').textContent = at('pickChat');
-    updateGroupScopeVisibility();
+    if (wrap) wrap.setAttribute('aria-busy', on ? 'true' : 'false');
   }
 
   async function loadSettingsAndQuiz() {
     if (!chatId) return;
     var rb = document.getElementById('reload');
     if (rb) rb.disabled = true;
-    document.querySelectorAll('.chat-item').forEach(function (b) {
-      b.disabled = true;
-    });
+    setAdminGroupLoading(true);
     try {
       var s = await api('/api/admin/settings?chat_id=' + encodeURIComponent(chatId));
       applySettings(s);
-      await loadQuizList();
+      await loadQuizList({ skipListPlaceholder: true });
     } finally {
+      setAdminGroupLoading(false);
       if (rb) rb.disabled = false;
-      document.querySelectorAll('.chat-item').forEach(function (b) {
-        b.disabled = false;
-      });
     }
   }
 
@@ -304,12 +337,23 @@
     if (h) h.textContent = af('sectionQuizBankCount', { n: count });
   }
 
-  async function loadQuizList() {
+  async function loadQuizList(opts) {
+    opts = opts || {};
     if (!chatId) return;
     var list = document.getElementById('quizList');
+    var skipPh = Boolean(opts.skipListPlaceholder);
     if (list) {
-      list.style.pointerEvents = 'none';
-      list.style.opacity = '0.65';
+      if (!skipPh) {
+        list.innerHTML =
+          '<div class="quiz-list-loading" role="status">' +
+          '<span class="load-spinner load-spinner--sm" aria-hidden="true"></span>' +
+          '<span class="sub">' +
+          escapeHtml(at('loadingQuizList')) +
+          '</span></div>';
+      } else {
+        list.style.pointerEvents = 'none';
+        list.style.opacity = '0.65';
+      }
     }
     try {
       var data = await api('/api/admin/quiz?chat_id=' + encodeURIComponent(chatId));
@@ -332,30 +376,29 @@
       var snippet = (q.prompt || '').replace(/\s+/g, ' ');
       if (snippet.length > 120) snippet = snippet.slice(0, 117) + '…';
       meta.innerHTML =
-        '<strong>#' +
-        q.id +
-        '</strong> · ' +
-        q.points +
-        ' ' +
-        escapeHtml(at('unitPoints')) +
-        '<br><span style="color:var(--tg-theme-hint-color,#666);font-size:0.8125rem">' +
+        '<span style="color:var(--tg-theme-hint-color,#666);font-size:0.8125rem">' +
         escapeHtml(snippet) +
         '</span>';
       var actions = document.createElement('div');
       actions.className = 'quiz-row__actions';
       var btnEd = document.createElement('button');
       btnEd.type = 'button';
-      btnEd.className = 'btn btn--secondary btn--sm';
-      btnEd.textContent = at('quizEdit');
+      btnEd.className = 'btn btn--icon btn--secondary btn--sm';
+      btnEd.setAttribute('aria-label', at('quizEdit'));
+      btnEd.title = at('quizEdit');
+      btnEd.innerHTML = ICON_QUIZ_EDIT_SVG;
       btnEd.onclick = function () {
-        fillQuizForm(q);
+        location.href =
+          'quiz-edit.html?chat_id=' + encodeURIComponent(chatId) + '&id=' + encodeURIComponent(String(q.id));
       };
       var btnDel = document.createElement('button');
       btnDel.type = 'button';
-      btnDel.className = 'btn btn--secondary btn--sm';
-      btnDel.textContent = at('quizDel');
+      btnDel.className = 'btn btn--icon btn--secondary btn--sm';
+      btnDel.setAttribute('aria-label', at('quizDel'));
+      btnDel.title = at('quizDel');
+      btnDel.innerHTML = ICON_QUIZ_DEL_SVG;
       btnDel.onclick = function () {
-        if (!confirm(af('confirmDeleteQ', { id: q.id }))) return;
+        if (!confirm(at('confirmDeleteQ'))) return;
         deleteQuiz(q.id);
       };
       actions.appendChild(btnEd);
@@ -380,85 +423,8 @@
       .replace(/"/g, '&quot;');
   }
 
-  function fillQuizForm(q) {
-    document.getElementById('qf_id').value = q.id ? String(q.id) : '';
-    document.getElementById('qf_prompt').value = q.prompt || '';
-    var lines = (q.choices || []).join('\n');
-    document.getElementById('qf_choices').value = lines;
-    document.getElementById('qf_correct').value = String(q.correct_index != null ? q.correct_index : 0);
-    document.getElementById('qf_points').value = String(q.points != null ? q.points : 10);
-  }
-
-  function resetQuizForm() {
-    fillQuizForm({ id: '', prompt: '', choices: [], correct_index: 0, points: 10 });
-    document.getElementById('qf_id').value = '';
-  }
-
-  function setQuizFormBusy(disabled) {
-    ['qf_save', 'qf_reset', 'qf_new'].forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el) el.disabled = disabled;
-    });
-  }
-
-  async function saveQuiz() {
-    if (!chatId) {
-      toast(at('toastSelectChat'), true);
-      return;
-    }
-    var prompt = document.getElementById('qf_prompt').value.trim();
-    var rawChoices = document.getElementById('qf_choices').value.split('\n');
-    var choices = rawChoices
-      .map(function (x) {
-        return x.trim();
-      })
-      .filter(Boolean);
-    if (choices.length < 2) {
-      toast(at('toastQuizChoices2'), true);
-      return;
-    }
-    var correctIndex = parseInt(document.getElementById('qf_correct').value, 10);
-    if (!Number.isFinite(correctIndex) || correctIndex < 0 || correctIndex >= choices.length) {
-      toast(af('toastQuizCorrectRange', { max: choices.length - 1 }), true);
-      return;
-    }
-    var points = parseInt(document.getElementById('qf_points').value, 10);
-    if (!Number.isFinite(points) || points < 0) {
-      toast(at('toastQuizPoints'), true);
-      return;
-    }
-    var qid = document.getElementById('qf_id').value.trim();
-    var body = {
-      prompt: prompt,
-      choices: choices,
-      correct_index: correctIndex,
-      points: points,
-    };
-    if (qid) body.id = parseInt(qid, 10);
-    if (!prompt) {
-      toast(at('toastQuizPrompt'), true);
-      return;
-    }
-    try {
-      setQuizFormBusy(true);
-      await api('/api/admin/quiz?chat_id=' + encodeURIComponent(chatId), {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify(body),
-      });
-      toast(qid ? at('toastQuizUpdated') : at('toastQuizAdded'));
-      resetQuizForm();
-      await loadQuizList();
-    } catch (e) {
-      toast(e.message, true);
-    } finally {
-      setQuizFormBusy(false);
-    }
-  }
-
   async function deleteQuiz(id) {
     try {
-      setQuizFormBusy(true);
       await api(
         '/api/admin/quiz?chat_id=' + encodeURIComponent(chatId) + '&id=' + encodeURIComponent(String(id)),
         { method: 'DELETE' }
@@ -467,55 +433,18 @@
       await loadQuizList();
     } catch (e) {
       toast(e.message, true);
-    } finally {
-      setQuizFormBusy(false);
     }
   }
 
-  async function loadStats() {
-    if (!chatId) {
-      toast(at('toastSelectChat'), true);
-      return;
-    }
-    var btnSt = document.getElementById('btnStats');
-    if (btnSt) btnSt.disabled = true;
-    var days = parseInt(document.getElementById('statsRange').value, 10) || 7;
-    var out = document.getElementById('statsOut');
-    out.innerHTML = '<p class="sub" style="margin:0">' + escapeHtml(at('statsLoading')) + '</p>';
-    try {
-      var s = await api(
-        '/api/admin/stats?chat_id=' + encodeURIComponent(chatId) + '&range_days=' + encodeURIComponent(String(days))
-      );
-      var counts = s.counts || {};
-      var keys = Object.keys(counts).sort();
-      if (!keys.length) {
-        out.innerHTML = '<p class="sub" style="margin:0">' + escapeHtml(at('statsEmpty')) + '</p>';
+  var btnOpenStats = document.getElementById('btnOpenStats');
+  if (btnOpenStats) {
+    btnOpenStats.onclick = function () {
+      if (!chatId) {
+        toast(at('toastSelectChat'), true);
         return;
       }
-      var dl = document.createElement('dl');
-      dl.className = 'stats-dl';
-      keys.forEach(function (k) {
-        var dt = document.createElement('dt');
-        var evKey = 'statsEvt_' + k;
-        var lbl = at(evKey);
-        dt.textContent = lbl === evKey ? k : lbl;
-        var dd = document.createElement('dd');
-        dd.textContent = String(counts[k]);
-        dl.appendChild(dt);
-        dl.appendChild(dd);
-      });
-      out.innerHTML = '';
-      var since = document.createElement('p');
-      since.className = 'sub';
-      since.style.margin = '0 0 0.5rem';
-      since.textContent = af('statsSince', { since: s.since || '' });
-      out.appendChild(since);
-      out.appendChild(dl);
-    } catch (e) {
-      out.innerHTML = '<p class="err" style="margin:0">' + escapeHtml(e.message) + '</p>';
-    } finally {
-      if (btnSt) btnSt.disabled = false;
-    }
+      location.href = 'stats.html?chat_id=' + encodeURIComponent(chatId);
+    };
   }
 
   document.getElementById('reload').onclick = function () {
@@ -528,7 +457,6 @@
     });
   };
   document.getElementById('btnSave').onclick = saveSettings;
-  document.getElementById('btnStats').onclick = loadStats;
   document.getElementById('cleartr').onclick = async function () {
     if (!chatId) {
       toast(at('toastSelectChat'), true);
@@ -545,15 +473,14 @@
       if (clr) clr.disabled = false;
     }
   };
-  document.getElementById('qf_save').onclick = saveQuiz;
-  document.getElementById('qf_reset').onclick = resetQuizForm;
-  var qfNew = document.getElementById('qf_new');
-  if (qfNew) {
-    qfNew.onclick = function () {
-      resetQuizForm();
-      toast(at('toastQuizNewForm'));
-      var el = document.getElementById('qf_prompt');
-      if (el) el.focus();
+  var btnQuizNewPage = document.getElementById('btnQuizNewPage');
+  if (btnQuizNewPage) {
+    btnQuizNewPage.onclick = function () {
+      if (!chatId) {
+        toast(at('toastSelectChat'), true);
+        return;
+      }
+      location.href = 'quiz-edit.html?chat_id=' + encodeURIComponent(chatId);
     };
   }
 
@@ -566,33 +493,19 @@
     postVerifyBehEl.addEventListener('change', syncPostVerifyWelcomeBlock);
   }
 
-  document.getElementById('adminUiLocale').addEventListener('change', function () {
-    locale = WebappI18n.normalizeLocale(this.value);
-    WebappI18n.setLocale(locale);
-    refreshAdminI18n();
-    if (chatId) {
-      loadQuizList().catch(function (e) {
-        toast(e.message, true);
-      });
-    } else {
-      syncVerifyModeBlocks();
-      syncPostVerifyWelcomeBlock();
-    }
-  });
-
-  refreshAdminI18n();
   syncVerifyModeBlocks();
   syncPostVerifyWelcomeBlock();
 
   (async function init() {
     var st = document.getElementById('status');
     try {
-      await loadChats();
+      var me = await api('/api/admin/session');
+      if (me.global_admin) document.getElementById('gab').classList.remove('hidden');
       st.style.display = 'none';
+      refreshAdminI18n();
+      await loadSettingsAndQuiz();
       document.getElementById('panel').classList.remove('hidden');
       refreshAdminI18n();
-      updateGroupScopeVisibility();
-      if (chatId) await loadSettingsAndQuiz();
     } catch (e) {
       st.innerHTML = '<span class="err">' + escapeHtml(e.message) + '</span>';
     }

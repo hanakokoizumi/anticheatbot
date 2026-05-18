@@ -31,10 +31,11 @@ MESSAGES: dict[BotLocale, dict[str, str]] = {
             "群管理员发送 /admin 打开管理后台。运维可在环境变量中配置全局管理员（见 README）。"
         ),
         "cmd_admin_group": "在此群组打开管理后台（需具备群管理员身份）。",
-        "cmd_admin_private": "选择要管理的群组（在后台内选择 chat）。",
+        "cmd_admin_private": "在管理后台首页的群组列表中选择要管理的群。",
         "btn_open_admin": "打开管理后台",
         "btn_open_verify": "打开验证",
         "verify_invite": "欢迎！请点击按钮完成入群验证（Telegram 小程序）。",
+        "default_welcome": "欢迎 {mention} 入群！",
     },
     "en": {
         "cmd_start": (
@@ -44,10 +45,11 @@ MESSAGES: dict[BotLocale, dict[str, str]] = {
             "environment variables (see README)."
         ),
         "cmd_admin_group": "Open the admin dashboard for this group (you must be a group administrator).",
-        "cmd_admin_private": "Pick a group to manage (select the chat inside the dashboard).",
+        "cmd_admin_private": "Pick a group from the list on the admin home page.",
         "btn_open_admin": "Open admin",
         "btn_open_verify": "Open verification",
         "verify_invite": "Welcome! Tap the button to complete group verification (Telegram Mini App).",
+        "default_welcome": "Welcome, {mention}! Glad you're here.",
     },
     "ja": {
         "cmd_start": (
@@ -56,10 +58,11 @@ MESSAGES: dict[BotLocale, dict[str, str]] = {
             "管理者は /admin で管理画面を開けます。運用者は環境変数でグローバル管理者を設定できます（README 参照）。"
         ),
         "cmd_admin_group": "このグループの管理画面を開きます（グループ管理者である必要があります）。",
-        "cmd_admin_private": "管理するグループを選びます（ダッシュボード内でチャットを選択してください）。",
+        "cmd_admin_private": "管理ホームのグループ一覧から管理するグループを選びます。",
         "btn_open_admin": "管理画面を開く",
         "btn_open_verify": "認証を開く",
         "verify_invite": "ようこそ！ボタンからグループ認証（Telegram ミニアプリ）を完了してください。",
+        "default_welcome": "{mention} さん、ようこそ！",
     },
     "ko": {
         "cmd_start": (
@@ -68,10 +71,11 @@ MESSAGES: dict[BotLocale, dict[str, str]] = {
             "관리자는 /admin 으로 관리 화면을 엽니다. 운영자는 환경 변수로 전역 관리자를 설정할 수 있습니다(README 참고)."
         ),
         "cmd_admin_group": "이 그룹의 관리 화면을 엽니다(그룹 관리자여야 합니다).",
-        "cmd_admin_private": "관리할 그룹을 선택하세요(대시보드에서 채팅을 고릅니다).",
+        "cmd_admin_private": "관리 홈의 그룹 목록에서 관리할 그룹을 고릅니다.",
         "btn_open_admin": "관리 열기",
         "btn_open_verify": "인증 열기",
         "verify_invite": "환영합니다! 버튼을 눌러 그룹 인증을 완료하세요(Telegram 미니 앱).",
+        "default_welcome": "{mention} 님, 환영합니다!",
     },
 }
 

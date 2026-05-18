@@ -16,6 +16,26 @@ def test_webapp_public_url_requires_https() -> None:
         Settings(BOT_TOKEN="1:a", WEBAPP_PUBLIC_URL="http://example.com")
 
 
+def test_openai_base_url_requires_http_or_https() -> None:
+    with pytest.raises(ValidationError):
+        Settings(BOT_TOKEN="1:a", WEBAPP_PUBLIC_URL="https://x", OPENAI_BASE_URL="file:///etc/passwd")
+
+
+def test_openai_base_url_strips_trailing_slash() -> None:
+    s = Settings(BOT_TOKEN="1:a", WEBAPP_PUBLIC_URL="https://x", OPENAI_BASE_URL="https://api.example.com/v1/")
+    assert s.openai_base_url == "https://api.example.com/v1"
+
+
+def test_trust_x_forwarded_for_defaults_false() -> None:
+    s = Settings(BOT_TOKEN="1:a", WEBAPP_PUBLIC_URL="https://x")
+    assert s.trust_x_forwarded_for is False
+
+
+def test_trust_x_forwarded_for_can_enable() -> None:
+    s = Settings(BOT_TOKEN="1:a", WEBAPP_PUBLIC_URL="https://x", trust_x_forwarded_for=True)
+    assert s.trust_x_forwarded_for is True
+
+
 def test_global_admin_id_set_merges_and_skips_invalid() -> None:
     s = Settings(
         BOT_TOKEN="1:a",

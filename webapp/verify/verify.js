@@ -1,9 +1,17 @@
 (function () {
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   var tg = window.Telegram && window.Telegram.WebApp;
   if (!tg) {
     var errLc = window.WebappI18n ? WebappI18n.resolveLocale(null) : 'zh-Hans';
     var errMsg = window.WebappI18n ? WebappI18n.verifyT(errLc, 'errOutsideTg') : 'Open inside Telegram';
-    document.getElementById('status').innerHTML = '<span class="err">' + errMsg + '</span>';
+    document.getElementById('status').innerHTML = '<span class="err">' + escapeHtml(errMsg) + '</span>';
     return;
   }
 
@@ -30,6 +38,7 @@
     if (raw == null) return null;
     var v = String(raw).trim();
     if (!v || v === 'undefined' || v === 'null') return null;
+    if (v.length > 64 || !/^[A-Za-z0-9_-]{16,64}$/.test(v)) return null;
     return v;
   }
 
@@ -83,7 +92,7 @@
     try {
       var wch = tg.initDataUnsafe && tg.initDataUnsafe.chat;
       if (wch && wch.id != null) {
-        adminUrl += '?chat_id=' + encodeURIComponent(String(wch.id));
+        adminUrl = '/admin/group.html?chat_id=' + encodeURIComponent(String(wch.id));
       }
     } catch (e) {
       /* ignore */
@@ -142,17 +151,10 @@
       'bad user json': 'errInitDataInvalid',
       'missing user id': 'errInitDataInvalid',
       'bad user id': 'errInitDataInvalid',
+      'init_data too large': 'errInitDataInvalid',
     };
     var key = map[low];
     return key ? t(key) : s;
-  }
-
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
   }
 
   function headers() {
@@ -178,6 +180,7 @@
         method: o.method || 'GET',
         headers: Object.assign({}, headers(), o.headers || {}),
         body: o.body,
+        cache: 'no-store',
       });
     } catch (err) {
       throw new Error(t('networkError'));
@@ -287,12 +290,73 @@
     }, 900);
   }
 
+  /** Quiz not passed: empty UI, show message, auto-close Mini App after 5s. */
+  function showVerifyQuizFailThenClose(detailText) {
+    try {
+      sessionStorage.removeItem('hnk_verify_t');
+    } catch (rsf) {
+      /* ignore */
+    }
+    var app = document.getElementById('app');
+    if (app) {
+      app.style.display = 'none';
+      var main = document.getElementById('main');
+      if (main) main.innerHTML = '';
+    }
+    var turn = document.getElementById('turnstile');
+    if (turn) turn.innerHTML = '';
+    clearTurnstileWidget();
+    var st = document.getElementById('status');
+    st.style.display = 'block';
+    st.className = 'status-line status-line--err';
+    locale = WebappI18n.getLocale(tg);
+    var body =
+      t('quizCountFail', {
+        correct: Number(detailText.correct),
+        total: Number(detailText.total),
+        need: Number(detailText.need),
+      }) +
+      '\n' +
+      t('quizFailClosing', { seconds: 5 });
+    st.textContent = body;
+    setTimeout(function () {
+      try {
+        tg.close();
+      } catch (e) {
+        /* ignore */
+      }
+    }, 5000);
+  }
+
+  function looksLikeHtmlFragment(s) {
+    var t = String(s || '').trim();
+    if (!t || t.charCodeAt(0) !== 60) return false;
+    return /<\/[a-z][a-z0-9:-]*>/i.test(t);
+  }
+
   function setRulesContent(el, rawMd) {
     var src = rawMd && String(rawMd).trim() ? rawMd : t('noRules');
     if (window.marked && window.DOMPurify) {
       try {
-        var html = marked.parse(src, { breaks: true, gfm: true });
-        el.innerHTML = DOMPurify.sanitize(html);
+        if (!window.__hnkMarkedInit) {
+          if (typeof marked.setOptions === 'function') {
+            marked.setOptions({ async: false, breaks: true, gfm: true });
+          }
+          window.__hnkMarkedInit = true;
+        }
+        var htmlRaw;
+        if (looksLikeHtmlFragment(src)) {
+          htmlRaw = src;
+        } else {
+          htmlRaw = marked.parse(src);
+          if (htmlRaw && typeof htmlRaw.then === 'function') {
+            throw new Error('marked async output');
+          }
+        }
+        el.innerHTML = DOMPurify.sanitize(String(htmlRaw), {
+          ADD_ATTR: ['target', 'id', 'rel'],
+          ALLOW_UNKNOWN_PROTOCOLS: true,
+        });
         el.classList.add('rules-markdown');
         return;
       } catch (e) {
@@ -495,7 +559,7 @@
     hint.style.marginTop = '0';
     hint.textContent = t('quizHint', {
       n: (sess.quiz || []).length,
-      pass: sess.quiz_pass_score_threshold,
+      pass: sess.quiz_pass_min_correct,
     });
     card.appendChild(hint);
 
@@ -575,15 +639,17 @@
         if (!res.ok) {
           btn.disabled = false;
           if (tryCloseWrongVerifySubject(res, data)) return;
-          if (res.status === 403 && (data.score != null || data.max_score != null || data.need != null)) {
-            var need = data.need != null ? data.need : sess.quiz_pass_score_threshold;
-            setErr(
-              t('scoreFail', {
-                score: data.score != null ? data.score : '?',
-                max: data.max_score != null ? data.max_score : '?',
-                need: need,
-              })
-            );
+          if (
+            res.status === 403 &&
+            data.need != null &&
+            data.correct != null &&
+            data.total != null
+          ) {
+            showVerifyQuizFailThenClose({
+              correct: Number(data.correct),
+              total: Number(data.total),
+              need: Number(data.need),
+            });
           } else {
             var errTxt =
               (typeof data.message === 'string' && data.message) ||

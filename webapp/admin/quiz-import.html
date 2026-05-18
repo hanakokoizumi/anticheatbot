@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title data-skip-admin-doc-title>JSON 题库导入</title>
+  <link rel="stylesheet" href="/shared/ui.css?v=8" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div id="toast" class="toast" style="display:none" aria-live="polite"></div>
+  <div class="shell shell--wide">
+    <div class="admin-sticky-head">
+      <header class="topbar topbar--nav">
+        <a
+          class="topbar-back"
+          id="linkBackQuizEdit"
+          href="quiz-edit.html"
+          data-i18n-aria="btnBackToQuizEdit"
+          aria-label="返回题目编辑"
+          title="返回题目编辑"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </a>
+        <h1 class="topbar-title" data-i18n="headingQuizImport">JSON 题库与 LLM</h1>
+      </header>
+    </div>
+
+    <div class="card">
+      <div class="field quiz-import-field">
+        <span class="field-label" data-i18n="lblQuizJsonImport">JSON 题库导入</span>
+        <p class="sub quiz-import-field__hint" data-i18n="hintQuizJsonImport" style="margin:0 0 0.5rem"></p>
+        <textarea id="qf_quiz_json_import" class="textarea-code" rows="8" data-i18n-placeholder="phQuizJsonImport"></textarea>
+        <div class="toolbar" style="margin-top:0.5rem">
+          <button type="button" class="btn btn--secondary" id="qf_quiz_import_append" data-i18n="btnQuizImportAppend">追加导入</button>
+          <button type="button" class="btn btn--secondary" id="qf_quiz_import_replace" data-i18n="btnQuizImportReplace">替换全部题库</button>
+        </div>
+      </div>
+      <details class="quiz-llm-details">
+        <summary class="quiz-llm-details__summary" data-i18n="quizLlmGuideSummary">用 LLM 生成题库</summary>
+        <p class="sub quiz-llm-details__intro" data-i18n="quizLlmGuideIntro"></p>
+        <div class="toolbar" style="margin:0.35rem 0 0.5rem">
+          <button type="button" class="btn btn--secondary btn--sm" id="btn_quiz_copy_json_sample" data-i18n="btnQuizCopyJsonSample">复制 JSON 范例</button>
+          <button type="button" class="btn btn--secondary btn--sm" id="btn_quiz_copy_llm_prompt" data-i18n="btnQuizCopyLlmPrompt">复制给 LLM 的提示词</button>
+        </div>
+        <pre id="quiz_llm_json_sample" class="quiz-json-sample"></pre>
+        <span class="field-label quiz-llm-prompt-label" id="lbl_quiz_llm_prompt" data-i18n="lblQuizLlmPrompt">给 LLM 的提示词</span>
+        <pre id="quiz_llm_prompt" class="quiz-json-sample quiz-llm-prompt-pre" tabindex="0" role="region" aria-labelledby="lbl_quiz_llm_prompt"></pre>
+      </details>
+    </div>
+  </div>
+  <script src="/shared/i18n.js?v=14"></script>
+  <script src="/admin/quiz-import.js?v=4"></script>
+</body>
+</html>

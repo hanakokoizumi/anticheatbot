@@ -27,7 +27,7 @@ def _admin_locale(message: Message) -> BotLocale:
 async def cmd_admin_group(message: Message) -> None:
     settings = get_settings()
     loc = _admin_locale(message)
-    url = f"{settings.webapp_public_url}/admin/index.html?chat_id={message.chat.id}"
+    url = f"{settings.webapp_public_url}/admin/group.html?chat_id={message.chat.id}"
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [

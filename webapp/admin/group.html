@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title data-skip-admin-doc-title></title>
+  <link rel="stylesheet" href="/shared/ui.css?v=8" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div id="toast" class="toast" style="display:none" aria-live="polite"></div>
+  <div class="shell shell--wide">
+    <p id="status" class="status-line" role="status" aria-live="polite" data-i18n="statusLoading">加载中…</p>
+    <div id="panel" class="hidden">
+      <div class="admin-sticky-head">
+        <header class="topbar topbar--nav">
+          <a
+            id="linkBackHome"
+            class="topbar-back"
+            href="index.html"
+            data-i18n-aria="btnBackToHome"
+            aria-label="返回群组列表"
+            title="返回群组列表"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </a>
+          <div>
+            <h1 class="topbar-title">
+              <span id="groupTitleHead"></span>
+              <span id="gab" class="badge badge--accent hidden" data-i18n="badgeGlobal">全局</span>
+            </h1>
+          </div>
+        </header>
+      </div>
+
+      <div class="admin-group-scope-wrap">
+        <div id="adminGroupLoading" class="admin-busy-overlay hidden" aria-hidden="true">
+          <div class="load-stack">
+            <span class="load-spinner" aria-hidden="true"></span>
+            <p class="load-msg" data-i18n="loadingAdminGroup">正在加载群组设置与题库…</p>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <button type="button" class="btn btn--secondary" id="reload" data-i18n="reload">重新加载</button>
+          <button type="button" class="btn btn--secondary" id="cleartr" data-i18n="clearTranslation">清除翻译缓存</button>
+        </div>
+
+        <div class="card">
+          <h2 class="section-title" data-i18n="sectionVerify">验证与开关</h2>
+          <div class="field field--check">
+            <input type="checkbox" id="f_verification_enabled" />
+            <label for="f_verification_enabled" data-i18n="lblVerification">启用入群验证</label>
+          </div>
+          <div class="field">
+            <label for="f_verify_mode" data-i18n="lblVerifyMode">验证模式</label>
+            <select id="f_verify_mode">
+              <option value="rules_ack" data-i18n="optRulesAck">群规确认</option>
+              <option value="quiz" data-i18n="optQuiz">问卷</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f_verify_timeout_seconds" data-i18n="lblVerifyTimeout">验证超时（秒）</label>
+            <input type="number" id="f_verify_timeout_seconds" min="30" step="1" />
+          </div>
+          <div class="field field--check">
+            <input type="checkbox" id="f_kick_on_verify_timeout" />
+            <label for="f_kick_on_verify_timeout" data-i18n="lblKickTimeout">超时踢出</label>
+          </div>
+          <div class="field field--check">
+            <input type="checkbox" id="f_turnstile_enabled" style="display:none" />
+            <label for="f_turnstile_enabled" data-i18n="lblTurnstile">启用 Cloudflare Turnstile</label>
+          </div>
+          <div class="field field--check">
+            <input type="checkbox" id="f_delete_join_message" />
+            <label for="f_delete_join_message" data-i18n="lblDeleteJoinMessage">入群时删除入群系统消息</label>
+          </div>
+          <div class="field field--check">
+            <input type="checkbox" id="f_block_guest_bots" />
+            <label for="f_block_guest_bots" data-i18n="lblBlockGuestBots">拦截 Guest Bot 垃圾消息</label>
+          </div>
+          <div class="field">
+            <label for="f_post_verify_behavior" data-i18n="lblPostVerifyBehavior">验证通过后</label>
+            <select id="f_post_verify_behavior">
+              <option value="delete_only" data-i18n="optPostVerifyDeleteOnly">仅删除验证邀请</option>
+              <option value="welcome" data-i18n="optPostVerifyWelcome">发送欢迎消息</option>
+            </select>
+          </div>
+          <div id="admin_block_welcome" class="hidden">
+            <div class="field">
+              <label for="f_welcome_message_markdown" data-i18n="lblWelcomeMessage">欢迎消息正文</label>
+              <textarea id="f_welcome_message_markdown" class="textarea-lg" data-i18n-placeholder="phWelcomeMessage" placeholder=""></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div id="admin_block_rules_mode">
+          <div class="card">
+            <h2 class="section-title" data-i18n="sectionRules">群规（Markdown）</h2>
+            <div class="field">
+              <label for="f_rules_markdown" data-i18n="lblRulesBody">正文</label>
+              <textarea id="f_rules_markdown" class="textarea-lg" data-i18n-placeholder="phRules" placeholder="支持 Markdown 文本"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div id="admin_block_quiz_mode" class="hidden">
+          <div class="card">
+            <h2 class="section-title" data-i18n="sectionQuizCfg">问卷参数</h2>
+            <div class="field">
+              <label for="f_quiz_draw_count" data-i18n="lblQuizDraw">每次随机展示题数</label>
+              <input type="number" id="f_quiz_draw_count" min="1" step="1" />
+            </div>
+            <div class="field">
+              <label for="f_quiz_pass_min_correct" data-i18n="lblQuizPassMinCorrect">通过至少答对题数</label>
+              <input type="number" id="f_quiz_pass_min_correct" min="1" step="1" />
+            </div>
+          </div>
+
+          <div class="card">
+            <h2 class="section-title" id="quizBankHeading">题库</h2>
+            <p id="quizBankHint" class="sub" style="margin:0 0 0.75rem" data-i18n="quizBankMultiHint"></p>
+            <div id="quizList"></div>
+            <div class="toolbar" style="margin-top:0.75rem">
+              <button type="button" class="btn btn--primary" id="btnQuizNewPage" data-i18n="headingQuizNew">新建题目</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="section-title" data-i18n="sectionLang">语言与翻译</h2>
+          <div class="field">
+            <label for="f_canonical_locale" data-i18n="lblCanonical">规范语言（原文语言）</label>
+            <select id="f_canonical_locale">
+              <option value="zh-Hans" data-i18n="langOptZh">简体中文</option>
+              <option value="en" data-i18n="langOptEn">English</option>
+              <option value="ja" data-i18n="langOptJa">日本語</option>
+              <option value="ko" data-i18n="langOptKo">한국어</option>
+              <option value="zh-Hant" data-i18n="optLocaleZhHant">繁体中文（zh-Hant）</option>
+            </select>
+          </div>
+          <div class="field field--check">
+            <input type="checkbox" id="f_llm_translation_enabled" />
+            <label for="f_llm_translation_enabled" data-i18n="lblLlmTranslation">启用 LLM 翻译群规/题目</label>
+          </div>
+          <div class="field">
+            <span class="sub" data-i18n="lblAllowedLocales">允许翻译到的语言</span>
+            <p class="sub" data-i18n="hintAllowedLocales" style="margin:0.25rem 0 0.5rem"></p>
+            <div style="display:flex;flex-wrap:wrap;gap:0.5rem 1rem;margin-top:0.25rem">
+              <label class="field field--check" style="margin:0">
+                <input type="checkbox" name="f_translation_allowed_loc" value="zh-Hans" />
+                <span data-i18n="langOptZh">简体中文</span>
+              </label>
+              <label class="field field--check" style="margin:0">
+                <input type="checkbox" name="f_translation_allowed_loc" value="en" />
+                <span data-i18n="langOptEn">English</span>
+              </label>
+              <label class="field field--check" style="margin:0">
+                <input type="checkbox" name="f_translation_allowed_loc" value="ja" />
+                <span data-i18n="langOptJa">日本語</span>
+              </label>
+              <label class="field field--check" style="margin:0">
+                <input type="checkbox" name="f_translation_allowed_loc" value="ko" />
+                <span data-i18n="langOptKo">한국어</span>
+              </label>
+              <label class="field field--check" style="margin:0">
+                <input type="checkbox" name="f_translation_allowed_loc" value="zh-Hant" />
+                <span data-i18n="optLocaleZhHant">繁体中文（zh-Hant）</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="section-title" data-i18n="sectionLlm">LLM 反垃圾</h2>
+          <div class="field field--check">
+            <input type="checkbox" id="f_llm_enabled" />
+            <label for="f_llm_enabled" data-i18n="lblLlmEnabled">启用 LLM 审查新成员消息</label>
+          </div>
+          <div class="field">
+            <label for="f_llm_max_messages" data-i18n="lblLlmMax">每名新成员最多审查条数</label>
+            <input type="number" id="f_llm_max_messages" min="0" step="1" />
+          </div>
+          <div class="field">
+            <label for="f_llm_min_confidence_action" data-i18n="lblLlmConf">采取行动最低置信度（0–1）</label>
+            <input type="number" id="f_llm_min_confidence_action" min="0" max="1" step="0.05" />
+          </div>
+          <div class="field">
+            <label for="f_spam_action" data-i18n="lblSpamAction">判定为垃圾时</label>
+            <select id="f_spam_action">
+              <option value="delete" data-i18n="optSpamDelete">仅删除</option>
+              <option value="delete_and_restrict" data-i18n="optSpamRestrict">删除并限制</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="section-title" data-i18n="sectionStats">统计</h2>
+          <p class="sub" style="margin:0 0 0.75rem" data-i18n="statsPageHint"></p>
+          <button type="button" class="btn btn--secondary" id="btnOpenStats" data-i18n="btnOpenStatsPage">打开统计与日志</button>
+        </div>
+
+        <div class="save-bar">
+          <button type="button" class="btn btn--primary" id="btnSave" data-i18n="btnSaveGroup">保存群设置</button>
+          <p class="sub" style="margin:0.5rem 0 0;font-size:0.75rem" data-i18n="hintSaveBar"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/shared/i18n.js?v=15"></script>
+  <script src="/admin/admin-group.js?v=7"></script>
+</body>
+</html>

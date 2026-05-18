@@ -11,6 +11,9 @@ log = logging.getLogger(__name__)
 async def verify_turnstile(*, secret: str, response_token: str, remote_ip: str | None = None) -> bool:
     if not response_token:
         return False
+    if len(response_token) > 4096:
+        log.warning("turnstile response token exceeds max length")
+        return False
     data: dict[str, Any] = {"secret": secret, "response": response_token}
     if remote_ip:
         data["remoteip"] = remote_ip

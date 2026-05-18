@@ -7,7 +7,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        populate_by_name=True,
+    )
 
     bot_token: str = Field(..., alias="BOT_TOKEN")
 
@@ -32,6 +37,14 @@ class Settings(BaseSettings):
 
     turnstile_site_key: str | None = Field(default=None, alias="TURNSTILE_SITE_KEY")
     turnstile_secret_key: str | None = Field(default=None, alias="TURNSTILE_SECRET_KEY")
+    trust_x_forwarded_for: bool = Field(
+        default=False,
+        alias="TRUST_X_FORWARDED_FOR",
+        description=(
+            "Use first X-Forwarded-For hop as Turnstile remoteip when set. "
+            "Keep false if the app is reachable directly from the internet (clients can spoof the header)."
+        ),
+    )
 
     global_admin_user_ids: str = Field(default="", alias="GLOBAL_ADMIN_USER_IDS")
     admin_user_ids: str = Field(default="", alias="ADMIN_USER_IDS")
@@ -46,6 +59,16 @@ class Settings(BaseSettings):
                 "(Telegram inline WebApp buttons reject http and most non-public URLs)."
             )
             raise ValueError(msg)
+        return v
+
+    @field_validator("openai_base_url")
+    @classmethod
+    def normalize_openai_base_url(cls, v: str) -> str:
+        """Reject non-HTTP(S) schemes (e.g. file://) to reduce misconfiguration / odd client behavior."""
+        v = str(v).strip().rstrip("/")
+        low = v.lower()
+        if not (low.startswith("https://") or low.startswith("http://")):
+            raise ValueError("OPENAI_BASE_URL must start with http:// or https://")
         return v
 
     @staticmethod

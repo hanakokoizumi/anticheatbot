@@ -41,8 +41,13 @@ class GroupSettings(Base):
     llm_translation_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     translation_allowed_locales: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    quiz_pass_score_threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
-    quiz_draw_count: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    quiz_pass_min_correct: Mapped[int] = mapped_column(
+        "quiz_pass_score_threshold",
+        Integer,
+        nullable=False,
+        default=1,
+    )
+    quiz_draw_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     llm_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     llm_max_messages: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
@@ -73,6 +78,8 @@ class VerifyToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     invite_message_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     invite_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    join_message_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    join_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class UserChatState(Base):
@@ -101,6 +108,7 @@ class VerifyQuizSession(Base):
 
     token: Mapped[str] = mapped_column(String(64), ForeignKey("verify_tokens.token"), primary_key=True)
     question_ids_json: Mapped[list[int]] = mapped_column(JSONCompat, nullable=False)
+    shuffle_maps_json: Mapped[dict[str, list[int]]] = mapped_column(JSONCompat, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

@@ -25,6 +25,7 @@ from anticheatbot.bot_i18n import BotLocale, bot_t, resolve_bot_locale
 from anticheatbot.config import Settings, get_settings
 from anticheatbot.db.models import UserChatState, VerifyToken
 from anticheatbot.db.session import session_scope
+from anticheatbot.kick_registry import register_recent_bot_kick
 from anticheatbot.services.audit import log_event
 from anticheatbot.services.groups import (
     get_or_create_group_settings,
@@ -164,6 +165,18 @@ async def delete_stored_verify_invite(
         log.warning("delete verify invite message failed: %s", e)
 
 
+async def delete_stored_verify_join_message(
+    bot: Bot, *, join_message_chat_id: int | None, join_message_id: int | None
+) -> None:
+    """Best-effort delete of the Telegram service join message (new_chat_members)."""
+    if join_message_chat_id is None or join_message_id is None:
+        return
+    try:
+        await bot.delete_message(join_message_chat_id, join_message_id)
+    except TelegramBadRequest as e:
+        log.warning("delete verify join service message failed: %s", e)
+
+
 async def send_post_verify_welcome(
     bot: Bot,
     *,
@@ -235,6 +248,29 @@ async def _delete_unused_verify_token(token: str) -> None:
             await session.delete(vt)
 
 
+def _direct_admin_add_from_chat_member(event: ChatMemberUpdated) -> bool:
+    """Member was added by another user (e.g. admin) — not self-join via link / join request."""
+    user = event.new_chat_member.user
+    actor = event.from_user
+    if actor is None or user.is_bot:
+        return False
+    if actor.id == user.id:
+        return False
+    if event.via_join_request:
+        return False
+    if event.invite_link is not None:
+        return False
+    return True
+
+
+def _direct_admin_add_from_new_members_message(message: Message, member_user_id: int) -> bool:
+    """Service message ``new_chat_members``: ``from_user`` is usually the inviter when admin adds someone."""
+    fu = message.from_user
+    if fu is None or fu.is_bot:
+        return False
+    return fu.id != member_user_id
+
+
 async def _verify_timeout_task(
     bot: Bot,
     *,
@@ -245,6 +281,10 @@ async def _verify_timeout_task(
     kick: bool,
 ) -> None:
     await asyncio.sleep(delay)
+    invite_chat_id: int | None = None
+    invite_message_id: int | None = None
+    join_chat_id: int | None = None
+    join_message_id: int | None = None
     async with session_scope() as session:
         vt = await session.get(VerifyToken, token)
         if vt is None or vt.used_at is not None:
@@ -252,6 +292,10 @@ async def _verify_timeout_task(
         ucs = await session.get(UserChatState, (chat_id, user_id))
         if ucs is not None and ucs.verified:
             return
+        invite_chat_id = vt.invite_message_chat_id
+        invite_message_id = vt.invite_message_id
+        join_chat_id = vt.join_message_chat_id
+        join_message_id = vt.join_message_id
         await log_event(
             session,
             event_type="verify_timeout",
@@ -259,9 +303,16 @@ async def _verify_timeout_task(
             user_id=user_id,
             payload={"token": token[:8]},
         )
+    await delete_stored_verify_invite(
+        bot, invite_message_chat_id=invite_chat_id, invite_message_id=invite_message_id
+    )
+    await delete_stored_verify_join_message(
+        bot, join_message_chat_id=join_chat_id, join_message_id=join_message_id
+    )
     if not kick:
         return
     try:
+        await register_recent_bot_kick(chat_id=chat_id, user_id=user_id)
         await bot.ban_chat_member(chat_id, user_id)
         await bot.unban_chat_member(chat_id, user_id)
     except (TelegramBadRequest, TelegramForbiddenError) as e:
@@ -276,6 +327,9 @@ async def _start_verification_for_member(
     chat_title: str | None,
     user_language_code: str | None = None,
     message_thread_id: int | None = None,
+    join_message_chat_id: int | None = None,
+    join_message_id: int | None = None,
+    direct_admin_add: bool = False,
 ) -> None:
     settings = get_settings()
     async with session_scope() as session:
@@ -321,11 +375,41 @@ async def _start_verification_for_member(
             )
             return
 
+        if direct_admin_add:
+            now = utc_now()
+            ucs = await session.get(UserChatState, (chat_id, user_id))
+            if ucs is None:
+                session.add(
+                    UserChatState(
+                        chat_id=chat_id, user_id=user_id, verified=True, verified_at=now
+                    )
+                )
+            else:
+                ucs.verified = True
+                ucs.verified_at = now
+            await log_event(
+                session,
+                event_type="join_verify_skipped_direct_add",
+                chat_id=chat_id,
+                user_id=user_id,
+            )
+            return
+
+        verify_timeout_seconds = int(gs.verify_timeout_seconds)
+        kick_on_verify_timeout = bool(gs.kick_on_verify_timeout)
+
         token = secrets.token_urlsafe(24)
-        expires = utc_now() + timedelta(seconds=gs.verify_timeout_seconds)
+        # Provisional deadline: real expires_at is set again after the invite is sent so
+        # it matches the asyncio timeout task (both start when the user can open the link).
+        expires = utc_now() + timedelta(seconds=verify_timeout_seconds)
         session.add(
             VerifyToken(
-                token=token, chat_id=chat_id, user_id=user_id, expires_at=expires
+                token=token,
+                chat_id=chat_id,
+                user_id=user_id,
+                expires_at=expires,
+                join_message_chat_id=join_message_chat_id,
+                join_message_id=join_message_id,
             )
         )
         await session.flush()
@@ -386,6 +470,10 @@ async def _start_verification_for_member(
         if vt_row is not None:
             vt_row.invite_message_chat_id = invite_msg.chat.id
             vt_row.invite_message_id = invite_msg.message_id
+            # Align token expiry with kick timer: both count from invite delivery, not from
+            # first DB insert (which can be seconds earlier and made the web UI expire first).
+            deadline = utc_now() + timedelta(seconds=verify_timeout_seconds)
+            vt_row.expires_at = deadline
 
     asyncio.create_task(
         _verify_timeout_task(
@@ -393,8 +481,8 @@ async def _start_verification_for_member(
             chat_id=chat_id,
             user_id=user_id,
             token=token,
-            delay=float(gs.verify_timeout_seconds),
-            kick=gs.kick_on_verify_timeout,
+            delay=float(verify_timeout_seconds),
+            kick=kick_on_verify_timeout,
         )
     )
 
@@ -424,6 +512,7 @@ async def on_user_joined(event: ChatMemberUpdated, bot: Bot) -> None:
     user = event.new_chat_member.user
     if user.is_bot:
         return
+    direct = _direct_admin_add_from_chat_member(event)
     await _start_verification_for_member(
         bot,
         chat_id=event.chat.id,
@@ -431,6 +520,7 @@ async def on_user_joined(event: ChatMemberUpdated, bot: Bot) -> None:
         chat_title=event.chat.title,
         user_language_code=user.language_code,
         message_thread_id=getattr(event, "message_thread_id", None),
+        direct_admin_add=direct,
     )
 
 
@@ -444,14 +534,23 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
     async with session_scope() as session:
         gs = await get_or_create_group_settings(session, message.chat.id)
         should_del_join = gs.delete_join_message
+        verification_on = gs.verification_enabled
+
+    has_human = any(not u.is_bot for u in message.new_chat_members)
+    # Immediate delete when enabled (do not defer for verification).
     if should_del_join:
         try:
             await bot.delete_message(message.chat.id, message.message_id)
         except TelegramBadRequest as e:
             log.warning("delete join message failed: %s", e)
+
+    # Only record join message for later delete on verify success/timeout when it was not removed above.
+    join_c = message.chat.id if verification_on and has_human and not should_del_join else None
+    join_m = message.message_id if verification_on and has_human and not should_del_join else None
     for user in message.new_chat_members:
         if user.is_bot:
             continue
+        direct = _direct_admin_add_from_new_members_message(message, user.id)
         await _start_verification_for_member(
             bot,
             chat_id=message.chat.id,
@@ -459,4 +558,7 @@ async def on_new_chat_members(message: Message, bot: Bot) -> None:
             chat_title=message.chat.title,
             user_language_code=user.language_code,
             message_thread_id=message.message_thread_id,
+            join_message_chat_id=join_c,
+            join_message_id=join_m,
+            direct_admin_add=direct,
         )
