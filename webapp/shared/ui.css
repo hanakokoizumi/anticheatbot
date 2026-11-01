@@ -309,6 +309,7 @@ body {
 }
 
 .quiz-q {
+  overflow-wrap: anywhere;
   margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
@@ -349,6 +350,8 @@ body {
 
 .choice span {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 0.9375rem;
 }
 
@@ -914,6 +917,14 @@ body {
   display: grid;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
+}
+
+.stats-chart-grid > .card {
+  min-width: 0;
+}
+
+.stats-chart-canvas-wrap canvas {
+  max-width: 100%;
 }
 
 @media (min-width: 640px) {

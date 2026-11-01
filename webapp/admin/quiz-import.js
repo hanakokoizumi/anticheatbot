@@ -39,11 +39,16 @@
   }
   async function api(path, opts) {
     var o = opts || {};
-    var r = await fetch(path, {
-      method: o.method || 'GET',
-      headers: Object.assign({}, headers(), o.headers || {}),
-      body: o.body,
-    });
+    var r;
+    try {
+      r = await fetch(path, {
+        method: o.method || 'GET',
+        headers: Object.assign({}, headers(), o.headers || {}),
+        body: o.body,
+      });
+    } catch (e) {
+      throw new Error(at('networkError'));
+    }
     var text = await r.text();
     var data;
     try {
@@ -62,8 +67,8 @@
                   return x.msg || JSON.stringify(x);
                 })
                 .join('; ')
-            : data.message || text || String(r.status);
-      throw new Error(msg);
+            : data.message || data.error || text || String(r.status);
+      throw new Error(WebappI18n.adminApiError(locale, msg, r.status));
     }
     return data;
   }
@@ -122,8 +127,11 @@
         tmp.style.left = '-9999px';
         document.body.appendChild(tmp);
         tmp.select();
-        document.execCommand('copy');
-        document.body.removeChild(tmp);
+        try {
+          if (!document.execCommand('copy')) throw new Error('copy failed');
+        } finally {
+          document.body.removeChild(tmp);
+        }
       } catch {
         toast(at('toastCopyFailed'), true);
         return;

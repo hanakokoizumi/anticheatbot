@@ -63,6 +63,18 @@ docker compose up --build
 - 入群：跳过验证与禁言；
 - 发言：不参与 LLM 自动审查。
 
+## Guest Bot 拦截
+
+开启群设置 `block_guest_bots` 后，机器人收到带 `guest_bot_caller_user` 或
+`guest_bot_caller_chat` 标记的 guest bot 回复时会直接删除，不经过 LLM 或成员状态检查。
+待验证成员在禁言生效前发出的文本或带说明的媒体消息也会立即删除；即使群里没有开启
+`block_guest_bots`，由该成员触发且能被机器人收到的 guest bot 回复仍会删除。
+
+Telegram 默认不向其他机器人转发 bot 消息。要接收其他 bot 的普通群消息，需在
+@BotFather 为本机器人开启 **Bot-to-Bot Communication Mode**，并检查群管理员权限及
+Group Privacy Mode。guest bot 回复是否被投递仍需在目标群实测；Telegram 不投递的
+消息无法通过 Bot API 删除。
+
 ## 隐私说明
 
 群规/问卷送翻、群消息送审会调用第三方 LLM；`initData` 仅在服务端校验，请勿记录完整 initData 到日志。

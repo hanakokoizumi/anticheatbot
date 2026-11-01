@@ -63,8 +63,8 @@ def test_turnstile_client_ip_ignores_xff_by_default() -> None:
     s = Settings(BOT_TOKEN="1:a", WEBAPP_PUBLIC_URL="https://x")
     req = MagicMock()
     req.headers = {"X-Forwarded-For": "203.0.113.9"}
-    req.remote = "198.51.100.1"
-    assert _turnstile_client_ip(req, s) == "198.51.100.1"
+    req.remote = "8.8.8.8"
+    assert _turnstile_client_ip(req, s) == "8.8.8.8"
 
 
 def test_turnstile_client_ip_uses_xff_when_trusted_and_valid() -> None:
@@ -86,4 +86,4 @@ def test_turnstile_client_ip_invalid_xff_falls_back_to_remote() -> None:
     req = MagicMock()
     req.headers = {"X-Forwarded-For": "not-an-ip-address"}
     req.remote = "10.0.0.2"
-    assert _turnstile_client_ip(req, s) == "10.0.0.2"
+    assert _turnstile_client_ip(req, s) is None

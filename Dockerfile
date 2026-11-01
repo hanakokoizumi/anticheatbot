@@ -7,13 +7,15 @@ ENV UV_COMPILE_BYTECODE=1
 
 COPY pyproject.toml uv.lock README.md main.py ./
 RUN mkdir -p /etc/uv && echo '\n[[index]]\nurl = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/"\ndefault = true\n' > /etc/uv/uv.toml
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-install-project
 
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY src ./src
 COPY webapp ./webapp
 
+RUN uv sync --frozen --no-dev
+
 EXPOSE 8080
 
-CMD ["sh", "-c", "uv run alembic upgrade head && exec uv run python main.py"]
+CMD ["sh", "-c", ".venv/bin/alembic upgrade head && exec .venv/bin/python main.py"]

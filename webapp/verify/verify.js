@@ -74,13 +74,15 @@
         : null;
     if (head) return head;
     if (urlTokenSnap) return urlTokenSnap;
+    var launch = captureVerifyTokenFromUrl() || readVerifyTokenFromWebApp(tgApp);
+    if (launch) return launch;
     try {
-      var persisted = sessionStorage.getItem('hnk_verify_t');
+      var persisted = window.__hnkVerifyReload && sessionStorage.getItem('hnk_verify_t');
       if (persisted) return persisted;
     } catch (e4) {
       /* ignore */
     }
-    return captureVerifyTokenFromUrl() || readVerifyTokenFromWebApp(tgApp);
+    return null;
   }
 
   function readVerifyTokenNorm(tgApp) {
@@ -137,6 +139,10 @@
       'token expired': 'errTokenExpired',
       'wrong verify_mode': 'errWrongVerifyMode',
       'turnstile failed': 'errTurnstileFailed',
+      'turnstile_unavailable': 'errTurnstileUnavailable',
+      'turnstile_not_configured': 'errTurnstileNotConfigured',
+      'unable to restore chat permissions; please retry': 'errRestorePermissions',
+      'membership_changed': 'errMembershipChanged',
       'missing x-telegram-init-data': 'errMissingInitData',
       'missing t': 'missingT',
       'missing token': 'errMissingTokenBody',
@@ -148,6 +154,8 @@
       'missing auth_date': 'errInitDataInvalid',
       'bad auth_date': 'errInitDataInvalid',
       'auth_date too old': 'errInitDataExpired',
+      'auth_date in future': 'errInitDataInvalid',
+      'duplicate init_data field': 'errInitDataInvalid',
       'bad user json': 'errInitDataInvalid',
       'missing user id': 'errInitDataInvalid',
       'bad user id': 'errInitDataInvalid',
@@ -159,6 +167,22 @@
 
   function headers() {
     return { 'X-Telegram-Init-Data': tg.initData, 'Content-Type': 'application/json' };
+  }
+
+  function forgetInvalidVerifyToken(raw) {
+    if (['bad token', 'token used', 'token expired'].indexOf(String(raw || '').trim().toLowerCase()) < 0) return;
+    try {
+      sessionStorage.removeItem('hnk_verify_t');
+    } catch (e) {}
+  }
+
+  function identityNeedsReopen(raw) {
+    return [
+      'auth_date too old', 'auth_date in future', 'bad hash', 'empty init_data',
+      'missing hash', 'missing auth_date', 'bad auth_date', 'duplicate init_data field',
+      'bad user json', 'missing user id', 'bad user id', 'init_data too large',
+      'missing x-telegram-init-data',
+    ].indexOf(String(raw || '').trim().toLowerCase()) >= 0;
   }
 
   /** Non-owner opened this link: server returns JSON error; close Mini App without banner. */
@@ -208,8 +232,9 @@
                   return x.msg || JSON.stringify(x);
                 })
                 .join('; ')
-            : data.message || text || String(r.status);
+            : data.message || data.error || text || String(r.status);
       var err = new Error(userFacingApiError(msg));
+      forgetInvalidVerifyToken(msg);
       err.verifyRaw = String(msg).trim().toLowerCase();
       throw err;
     }
@@ -218,12 +243,60 @@
 
   var turnstileToken = null;
   var turnstileWidgetId = null;
+  var submissionInFlight = false;
+  var renderGeneration = 0;
+  var turnstileGeneration = 0;
+  var stopWaitingTurnstile = null;
+  var retryTurnstileAction = null;
+  var rulesResizeObserver = null;
+  var rulesImageTimer = null;
+  var currentErrorSource = null;
+
+  function stopObservingRules() {
+    if (rulesResizeObserver) rulesResizeObserver.disconnect();
+    rulesResizeObserver = null;
+    clearTimeout(rulesImageTimer);
+    rulesImageTimer = null;
+  }
+
+  function hasTurnstileApi() {
+    return window.turnstile && typeof window.turnstile.render === 'function';
+  }
+
+  function showTurnstileRetry(message) {
+    if (message) setErr(message, 'turnstile');
+    var retry = document.getElementById('retryTurnstile');
+    if (retry) retry.classList.remove('hidden');
+  }
+
+  function setSubmissionBusy(on) {
+    submissionInFlight = on;
+    var main = document.getElementById('main');
+    if (main) main.inert = on;
+    var lang = document.getElementById('verifyUiLang');
+    if (lang) lang.disabled = on;
+  }
+
+  function resetTurnstileForRetry() {
+    turnstileToken = null;
+    if (turnstileWidgetId != null && hasTurnstileApi()) {
+      try {
+        window.turnstile.reset(turnstileWidgetId);
+      } catch (e) {
+        showTurnstileRetry(t('turnstileLoadFailed'));
+      }
+    }
+  }
 
   function clearTurnstileWidget() {
+    turnstileGeneration++;
+    if (stopWaitingTurnstile) stopWaitingTurnstile();
     turnstileToken = null;
+    var retry = document.getElementById('retryTurnstile');
+    if (retry) retry.classList.add('hidden');
     var host = document.getElementById('turnstile');
     if (!host) return;
-    if (turnstileWidgetId != null && window.turnstile) {
+    if (turnstileWidgetId != null && hasTurnstileApi()) {
       try {
         window.turnstile.remove(turnstileWidgetId);
       } catch (e) {
@@ -235,41 +308,84 @@
   }
 
   function renderTurnstile(sitekey) {
-    if (!sitekey || !window.turnstile) return;
+    if (!sitekey || !hasTurnstileApi()) return;
     clearTurnstileWidget();
     var host = document.getElementById('turnstile');
+    var generation = turnstileGeneration;
     turnstileWidgetId = window.turnstile.render(host, {
       sitekey: sitekey,
+      size: host.clientWidth < 300 ? 'compact' : 'flexible',
+      theme: tg.colorScheme === 'dark' ? 'dark' : 'light',
+      language: locale === 'zh-Hans' ? 'zh-cn' : locale,
+      'refresh-expired': 'auto',
+      'refresh-timeout': 'auto',
       callback: function (tok) {
+        if (generation !== turnstileGeneration) return;
         turnstileToken = tok;
-        setErr('');
+        if (currentErrorSource === 'turnstile') setErr('');
+        document.getElementById('retryTurnstile').classList.add('hidden');
       },
       'expired-callback': function () {
+        if (generation !== turnstileGeneration) return;
         turnstileToken = null;
+        showTurnstileRetry(t('needTurnstile'));
+      },
+      'timeout-callback': function () {
+        if (generation !== turnstileGeneration) return;
+        turnstileToken = null;
+        showTurnstileRetry(t('needTurnstile'));
+      },
+      'error-callback': function () {
+        if (generation !== turnstileGeneration) return true;
+        turnstileToken = null;
+        showTurnstileRetry(t('errTurnstileFailed'));
+        return true;
+      },
+      'unsupported-callback': function () {
+        if (generation !== turnstileGeneration) return;
+        turnstileToken = null;
+        showTurnstileRetry(t('turnstileLoadFailed'));
       },
     });
   }
 
   function waitTurnstile(cb) {
-    if (window.turnstile) {
+    if (stopWaitingTurnstile) stopWaitingTurnstile();
+    if (hasTurnstileApi()) {
       cb();
       return;
     }
-    var n = 0;
-    var id = setInterval(function () {
-      n++;
-      if (window.turnstile) {
-        clearInterval(id);
-        cb();
+    var script = document.getElementById('turnstileApi');
+    var stopped = false;
+    function loaded() {
+      if (stopped || !hasTurnstileApi()) return;
+      cleanup();
+      cb();
+    }
+    function failed() {
+      if (!stopped) showTurnstileRetry(t('turnstileLoadFailed'));
+    }
+    var timer = setTimeout(failed, 15000);
+    function cleanup() {
+      stopped = true;
+      clearTimeout(timer);
+      if (script) {
+        script.removeEventListener('load', loaded);
+        script.removeEventListener('error', failed);
       }
-      if (n > 80) {
-        clearInterval(id);
-        cb();
-      }
-    }, 100);
+      stopWaitingTurnstile = null;
+    }
+    stopWaitingTurnstile = cleanup;
+    if (script) {
+      script.addEventListener('load', loaded);
+      script.addEventListener('error', failed);
+    } else {
+      failed();
+    }
   }
 
   function showVerifySuccessThenClose() {
+    stopObservingRules();
     try {
       sessionStorage.removeItem('hnk_verify_t');
     } catch (rs2) {
@@ -290,8 +406,36 @@
     }, 900);
   }
 
+  function showMembershipChanged() {
+    stopObservingRules();
+    clearTurnstileWidget();
+    try {
+      sessionStorage.removeItem('hnk_verify_t');
+    } catch (e) {}
+    document.getElementById('app').style.display = 'none';
+    var status = document.getElementById('status');
+    status.style.display = 'block';
+    status.className = 'status-line status-line--err';
+    status.textContent = t('errMembershipChanged');
+  }
+
+  function showVerificationDisabled() {
+    stopObservingRules();
+    clearTurnstileWidget();
+    setSubmissionBusy(true);
+    try {
+      sessionStorage.removeItem('hnk_verify_t');
+    } catch (e) {}
+    document.getElementById('app').style.display = 'none';
+    var status = document.getElementById('status');
+    status.style.display = 'block';
+    status.className = 'status-line';
+    status.textContent = t('verificationDisabled');
+  }
+
   /** Quiz not passed: empty UI, show message, auto-close Mini App after 5s. */
   function showVerifyQuizFailThenClose(detailText) {
+    stopObservingRules();
     try {
       sessionStorage.removeItem('hnk_verify_t');
     } catch (rsf) {
@@ -355,7 +499,10 @@
         }
         el.innerHTML = DOMPurify.sanitize(String(htmlRaw), {
           ADD_ATTR: ['target', 'id', 'rel'],
-          ALLOW_UNKNOWN_PROTOCOLS: true,
+          ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|tg):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+        });
+        el.querySelectorAll('a[target="_blank"]').forEach(function (link) {
+          link.setAttribute('rel', 'noopener noreferrer');
         });
         el.classList.add('rules-markdown');
         return;
@@ -367,7 +514,9 @@
     el.classList.remove('rules-markdown');
   }
 
-  function setErr(msg) {
+  function setErr(msg, source) {
+    if (msg && source === 'turnstile' && currentErrorSource === 'api') return;
+    currentErrorSource = msg ? source || 'api' : null;
     var el = document.getElementById('errBanner');
     if (!el) return;
     if (!msg) {
@@ -428,6 +577,9 @@
   }
 
   async function run() {
+    if (submissionInFlight) return;
+    stopObservingRules();
+    var generation = ++renderGeneration;
     locale = WebappI18n.getLocale(tg);
     var st = document.getElementById('status');
     token = readVerifyTokenNorm(tg) || token;
@@ -444,6 +596,7 @@
     try {
       sess = await fetchSession();
     } catch (e) {
+      if (generation !== renderGeneration) return;
       if (e && e.silentClose) return;
       if (e && e.verifyRaw === 'missing t') {
         try {
@@ -455,6 +608,11 @@
         return;
       }
       st.innerHTML = '<span class="err">' + escapeHtml(userFacingApiError(e.message)) + '</span>';
+      return;
+    }
+    if (generation !== renderGeneration) return;
+    if (sess.verification_disabled === true) {
+      showVerificationDisabled();
       return;
     }
     st.style.display = 'none';
@@ -478,23 +636,51 @@
     app.insertBefore(mount, app.querySelector('.topbar').nextSibling);
     app.insertBefore(err, main);
 
+    if (sess.translation_fallback === 'timeout') {
+      var translationNotice = document.createElement('div');
+      translationNotice.className = 'banner';
+      translationNotice.textContent = t('translationFallback');
+      main.appendChild(translationNotice);
+    }
+
     if (sess.turnstile_site_key) {
       var ban = document.createElement('div');
       ban.className = 'banner';
       ban.textContent = t('turnstileBanner');
       main.appendChild(ban);
-      waitTurnstile(function () {
-        if (!window.turnstile) {
-          setErr(t('turnstileLoadFailed'));
+      var renderReadyTurnstile = function () {
+        if (generation !== renderGeneration) return;
+        if (!hasTurnstileApi()) {
+          showTurnstileRetry(t('turnstileLoadFailed'));
           return;
         }
         try {
           renderTurnstile(sess.turnstile_site_key);
         } catch (e) {
           console.warn(e);
-          setErr(t('turnstileLoadFailed'));
+          showTurnstileRetry(t('turnstileLoadFailed'));
         }
-      });
+      };
+      retryTurnstileAction = function () {
+        if (submissionInFlight || generation !== renderGeneration) return;
+        if (currentErrorSource === 'turnstile') setErr('');
+        document.getElementById('retryTurnstile').classList.add('hidden');
+        if (!hasTurnstileApi()) {
+          if (stopWaitingTurnstile) stopWaitingTurnstile();
+          var oldScript = document.getElementById('turnstileApi');
+          if (oldScript) oldScript.remove();
+          var script = document.createElement('script');
+          script.id = 'turnstileApi';
+          script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+          script.async = true;
+          document.head.appendChild(script);
+        }
+        waitTurnstile(renderReadyTurnstile);
+      };
+      var retry = document.getElementById('retryTurnstile');
+      retry.textContent = t('retryTurnstile');
+      retry.onclick = function () { retryTurnstileAction(); };
+      waitTurnstile(renderReadyTurnstile);
     }
 
     if (sess.verify_mode === 'quiz') {
@@ -518,37 +704,98 @@
     agree.className = 'btn btn--primary';
     agree.textContent = t('agree');
     agree.disabled = true;
-    rules.addEventListener('scroll', function () {
-      var near = rules.scrollTop + rules.clientHeight >= rules.scrollHeight - 10;
-      agree.disabled = !near;
-    });
+    var imageWarning = document.createElement('div');
+    imageWarning.id = 'rulesImageError';
+    imageWarning.className = 'banner banner--warn hidden';
+    imageWarning.textContent = t('rulesImageFailed');
+    imageWarning.setAttribute('role', 'status');
+    var retryImages = document.createElement('button');
+    retryImages.id = 'retryRulesImages';
+    retryImages.type = 'button';
+    retryImages.className = 'btn btn--secondary hidden';
+    retryImages.textContent = t('reloadRules');
+    retryImages.addEventListener('click', function () { location.reload(); });
+    var hasReadAll = false;
+    function imagesReady() {
+      return Array.prototype.every.call(rules.querySelectorAll('img'), function (img) {
+        return img.complete && img.naturalWidth > 0;
+      });
+    }
+    function showImageFailure() {
+      if (!rules.isConnected) return;
+      if (imagesReady()) return;
+      imageWarning.classList.remove('hidden');
+      retryImages.classList.remove('hidden');
+    }
+    function updateReadState() {
+      if (!rules.isConnected) return;
+      var ready = imagesReady();
+      if (ready) {
+        clearTimeout(rulesImageTimer);
+        rulesImageTimer = null;
+        imageWarning.classList.add('hidden');
+        retryImages.classList.add('hidden');
+      } else if (Array.prototype.some.call(rules.querySelectorAll('img'), function (img) {
+        return img.complete && !img.naturalWidth;
+      })) {
+        showImageFailure();
+      }
+      if (!hasReadAll) {
+        var near = rules.scrollTop + rules.clientHeight >= rules.scrollHeight - 10;
+        hasReadAll = ready && near;
+      }
+      agree.disabled = submissionInFlight || !hasReadAll;
+    }
+    rules.addEventListener('scroll', updateReadState);
+    rules.addEventListener('load', updateReadState, true);
+    rules.addEventListener('error', updateReadState, true);
     agree.addEventListener('click', async function () {
+      if (submissionInFlight) return;
       if (sess.turnstile_enabled && sess.turnstile_site_key && !turnstileToken) {
-        setErr(t('needTurnstile'));
+        setErr(t('needTurnstile'), 'turnstile');
         return;
       }
       setErr('');
+      setSubmissionBusy(true);
       agree.disabled = true;
       try {
-        await api('/api/verify/rules-complete', {
+        var result = await api('/api/verify/rules-complete', {
           method: 'POST',
           body: JSON.stringify({ token: token, turnstile_token: turnstileToken }),
         });
+        if (result.verification_disabled === true) {
+          showVerificationDisabled();
+          return;
+        }
         showVerifySuccessThenClose();
       } catch (e) {
-        agree.disabled = false;
+        setSubmissionBusy(false);
+        updateReadState();
         if (e && e.silentClose) return;
-        setErr(userFacingApiError(e.message));
+        if (e && e.verifyRaw === 'membership_changed') {
+          showMembershipChanged();
+          return;
+        }
+        setErr(userFacingApiError(e.message), e.verifyRaw === 'turnstile failed' ? 'turnstile' : 'api');
+        resetTurnstileForRetry();
+        if (identityNeedsReopen(e.verifyRaw)) {
+          setSubmissionBusy(true);
+          agree.disabled = true;
+        }
       }
     });
+    actions.appendChild(imageWarning);
+    actions.appendChild(retryImages);
     actions.appendChild(agree);
     card.appendChild(rules);
     card.appendChild(actions);
     main.appendChild(card);
-    setTimeout(function () {
-      var near = rules.scrollTop + rules.clientHeight >= rules.scrollHeight - 10;
-      if (near) agree.disabled = false;
-    }, 0);
+    if (typeof ResizeObserver !== 'undefined') {
+      rulesResizeObserver = new ResizeObserver(updateReadState);
+      rulesResizeObserver.observe(rules);
+    }
+    if (!imagesReady()) rulesImageTimer = setTimeout(showImageFailure, 15000);
+    setTimeout(updateReadState, 0);
   }
 
   function renderQuiz(main, sess) {
@@ -612,11 +859,13 @@
     form.appendChild(actions);
     form.addEventListener('submit', async function (ev) {
       ev.preventDefault();
+      if (submissionInFlight) return;
       if (sess.turnstile_enabled && sess.turnstile_site_key && !turnstileToken) {
-        setErr(t('needTurnstile'));
+        setErr(t('needTurnstile'), 'turnstile');
         return;
       }
       setErr('');
+      setSubmissionBusy(true);
       btn.disabled = true;
       var fd = new FormData(form);
       var answers = {};
@@ -627,7 +876,7 @@
         var res = await fetch('/api/verify/quiz-submit', {
           method: 'POST',
           headers: headers(),
-          body: JSON.stringify({ token: token, answers: answers, turnstile_token: turnstileToken }),
+          body: JSON.stringify({ token: token, answers: answers, quiz_version: sess.quiz_version, turnstile_token: turnstileToken }),
         });
         var text = await res.text();
         var data;
@@ -637,8 +886,18 @@
           data = {};
         }
         if (!res.ok) {
+          setSubmissionBusy(false);
           btn.disabled = false;
           if (tryCloseWrongVerifySubject(res, data)) return;
+          if (res.status === 403 && data.error === 'membership_changed') {
+            showMembershipChanged();
+            return;
+          }
+          if (res.status === 409 && data.error === 'quiz_changed') {
+            await run();
+            setErr(t('errQuizChanged'));
+            return;
+          }
           if (
             res.status === 403 &&
             data.need != null &&
@@ -654,14 +913,26 @@
             var errTxt =
               (typeof data.message === 'string' && data.message) ||
               (typeof data.detail === 'string' && data.detail) ||
+              (typeof data.error === 'string' && data.error) ||
               text ||
               String(res.status);
-            setErr(userFacingApiError(errTxt));
+            setErr(userFacingApiError(errTxt), String(errTxt).trim().toLowerCase() === 'turnstile failed' ? 'turnstile' : 'api');
+            forgetInvalidVerifyToken(errTxt);
+            resetTurnstileForRetry();
+            if (identityNeedsReopen(errTxt)) {
+              setSubmissionBusy(true);
+              btn.disabled = true;
+            }
           }
+          return;
+        }
+        if (data.verification_disabled === true) {
+          showVerificationDisabled();
           return;
         }
         showVerifySuccessThenClose();
       } catch (e) {
+        setSubmissionBusy(false);
         btn.disabled = false;
         if (e && e.silentClose) return;
         var msg = e && e.message ? String(e.message) : '';
@@ -670,6 +941,7 @@
           msg === 'Failed to fetch' ||
           /network|fetch/i.test(msg);
         setErr(isNet ? t('networkError') : userFacingApiError(msg));
+        resetTurnstileForRetry();
       }
     });
     card.appendChild(form);
@@ -679,6 +951,9 @@
   function kickoffVerify() {
     function go(tok) {
       token = tok;
+      try {
+        sessionStorage.setItem('hnk_verify_t', tok);
+      } catch (e) {}
       var st0 = document.getElementById('status');
       if (st0) st0.textContent = t('loading');
       run().catch(function (e) {

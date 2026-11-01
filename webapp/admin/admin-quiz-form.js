@@ -48,8 +48,8 @@
                     return x.msg || JSON.stringify(x);
                   })
                   .join('; ')
-              : data.message || text || String(r.status);
-        throw new Error(msg);
+              : data.message || data.error || text || String(r.status);
+        throw new Error(WebappI18n.adminApiError(locale, msg, r.status));
       }
       return data;
     }
@@ -68,6 +68,7 @@
     var quizFormChoices = [];
     var quizFormChoiceEditingIndex = null;
     var quizChoiceEditBackup = '';
+    var quizFormBusy = false;
 
     function escapeHtml(s) {
       return String(s)
@@ -126,7 +127,42 @@
         quizFormChoices[idx] = v;
       }
       quizFormChoiceEditingIndex = null;
-      renderQuizChoicesList();
+      // Keep the action buttons and other rows alive until the blur's following click.
+      if (row) {
+        makeChoiceBodySelectable(row.querySelector('.quiz-choice-row__body'), quizFormChoices[idx], idx);
+        var editButton = row.querySelector('.quiz-choice-row__actions button');
+        if (editButton) editButton.disabled = false;
+      }
+    }
+
+    function focusChoice(idx) {
+      var body = document.querySelector('.quiz-choice-row[data-idx="' + idx + '"] .quiz-choice-row__body');
+      if (body) body.focus();
+      else document.getElementById('qf_choice_add').focus();
+    }
+
+    function makeChoiceBodySelectable(body, text, idx) {
+      body.innerHTML = '';
+      body.classList.add('quiz-choice-row__body--tap');
+      body.setAttribute('role', 'button');
+      body.setAttribute('tabindex', '0');
+      body.setAttribute('aria-pressed', idx === getCorrectIndex() ? 'true' : 'false');
+      body.setAttribute('aria-label', at('ariaQuizChoicePickCorrect'));
+      var span = document.createElement('span');
+      span.className = 'quiz-choice-row__text';
+      span.textContent = text;
+      body.appendChild(span);
+      function selectCorrect() {
+        setCorrectIndex(idx);
+        renderQuizChoicesList();
+        focusChoice(idx);
+      }
+      body.onclick = selectCorrect;
+      body.onkeydown = function (ev) {
+        if (ev.isComposing || ev.keyCode === 229 || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+        ev.preventDefault();
+        selectCorrect();
+      };
     }
 
     function addQuizChoiceFromAddInput() {
@@ -155,13 +191,6 @@
         var body = document.createElement('div');
         body.className = 'quiz-choice-row__body';
         var isEditing = quizFormChoiceEditingIndex === idx;
-        if (!isEditing) {
-          body.classList.add('quiz-choice-row__body--tap');
-          body.setAttribute('role', 'button');
-          body.setAttribute('tabindex', '0');
-          body.setAttribute('aria-pressed', idx === correctIdx ? 'true' : 'false');
-          body.setAttribute('aria-label', at('ariaQuizChoicePickCorrect'));
-        }
         if (isEditing) {
           var inp = document.createElement('input');
           inp.type = 'text';
@@ -177,32 +206,22 @@
             onQuizChoiceEditBlur(idx);
           });
           inp.addEventListener('keydown', function (ev) {
+            if (ev.isComposing || ev.keyCode === 229) return;
             if (ev.key === 'Enter') {
               ev.preventDefault();
               inp.blur();
+              focusChoice(idx);
             }
             if (ev.key === 'Escape') {
               ev.preventDefault();
               quizFormChoices[idx] = quizChoiceEditBackup;
               quizFormChoiceEditingIndex = null;
               renderQuizChoicesList();
+              focusChoice(idx);
             }
           });
         } else {
-          var span = document.createElement('span');
-          span.className = 'quiz-choice-row__text';
-          span.textContent = text;
-          body.appendChild(span);
-          body.addEventListener('click', function () {
-            setCorrectIndex(idx);
-            renderQuizChoicesList();
-          });
-          body.addEventListener('keydown', function (ev) {
-            if (ev.key !== 'Enter' && ev.key !== ' ') return;
-            ev.preventDefault();
-            setCorrectIndex(idx);
-            renderQuizChoicesList();
-          });
+          makeChoiceBodySelectable(body, text, idx);
         }
         var actions = document.createElement('div');
         actions.className = 'quiz-choice-row__actions';
@@ -241,6 +260,7 @@
           quizFormChoices.splice(idx, 1);
           syncCorrectIndexAfterChoiceDelete(idx);
           renderQuizChoicesList();
+          focusChoice(Math.min(idx, quizFormChoices.length - 1));
         };
         actions.appendChild(btnEd);
         actions.appendChild(btnDel);
@@ -283,7 +303,10 @@
     }
 
     function setQuizFormBusy(disabled) {
-      ['qf_save', 'qf_reset'].forEach(function (id) {
+      quizFormBusy = disabled;
+      var card = document.getElementById('qf_save').closest('.card');
+      if (card) card.inert = disabled;
+      ['qf_save', 'qf_reset', 'qf_prompt'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.disabled = disabled;
       });
@@ -303,6 +326,7 @@
     }
 
     async function saveQuiz() {
+      if (quizFormBusy) return;
       if (!chatId) {
         toast(at('toastSelectChat'), true);
         return;
@@ -310,6 +334,7 @@
       if (quizFormChoiceEditingIndex !== null) {
         onQuizChoiceEditBlur(quizFormChoiceEditingIndex);
       }
+      addQuizChoiceFromAddInput();
       var prompt = (document.getElementById('qf_prompt') && document.getElementById('qf_prompt').value.trim()) || '';
       var choices = quizFormChoices
         .map(function (x) {
@@ -373,7 +398,7 @@
     var qfChoiceAdd = document.getElementById('qf_choice_add');
     if (qfChoiceAdd) {
       qfChoiceAdd.addEventListener('keydown', function (ev) {
-        if (ev.key !== 'Enter') return;
+        if (ev.isComposing || ev.keyCode === 229 || ev.key !== 'Enter') return;
         ev.preventDefault();
         addQuizChoiceFromAddInput();
       });
@@ -402,6 +427,7 @@
       getLocale: function () {
         return locale;
       },
+      setBusy: setQuizFormBusy,
     };
   }
 

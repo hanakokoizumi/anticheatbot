@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from aiohttp import web
@@ -15,7 +14,7 @@ async def json_object(request: web.Request) -> dict[str, Any]:
         raise web.HTTPRequestEntityTooLarge(max_size=_MAX_JSON_BYTES, actual_size=cl)
     try:
         body = await request.json()
-    except json.JSONDecodeError as e:
+    except (ValueError, UnicodeDecodeError) as e:
         raise web.HTTPBadRequest(text="invalid json") from e
     if not isinstance(body, dict):
         raise web.HTTPBadRequest(text="expected json object")

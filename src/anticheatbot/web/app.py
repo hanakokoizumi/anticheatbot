@@ -47,6 +47,7 @@ def create_http_app(*, bot: Bot, settings: Settings) -> web.Application:
     app = web.Application()
     app["bot"] = bot
     app["settings"] = settings
+    app.on_response_prepare.append(_secure_response_headers)
 
     app.router.add_get("/api/verify/session", verify_api.verify_session)
     app.router.add_post("/api/verify/rules-complete", verify_api.verify_rules_complete)
@@ -71,3 +72,11 @@ def create_http_app(*, bot: Bot, settings: Settings) -> web.Application:
     app.router.add_static("/admin/", root / "admin", follow_symlinks=False, show_index=False)
 
     return app
+
+
+async def _secure_response_headers(request: web.Request, response: web.StreamResponse) -> None:
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"

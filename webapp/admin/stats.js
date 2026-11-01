@@ -196,11 +196,16 @@
 
   async function api(path, opts) {
     var o = opts || {};
-    var r = await fetch(path, {
-      method: o.method || 'GET',
-      headers: Object.assign({}, headers(), o.headers || {}),
-      body: o.body,
-    });
+    var r;
+    try {
+      r = await fetch(path, {
+        method: o.method || 'GET',
+        headers: Object.assign({}, headers(), o.headers || {}),
+        body: o.body,
+      });
+    } catch (e) {
+      throw new Error(at('networkError'));
+    }
     var text = await r.text();
     var data;
     try {
@@ -219,8 +224,8 @@
                   return x.msg || JSON.stringify(x);
                 })
                 .join('; ')
-            : data.message || text || String(r.status);
-      throw new Error(msg);
+            : data.message || data.error || text || String(r.status);
+      throw new Error(WebappI18n.adminApiError(locale, msg, r.status));
     }
     return data;
   }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import time
 from typing import Any
 from urllib.parse import parse_qsl
@@ -26,10 +27,15 @@ def validate_init_data(init_data: str, *, bot_token: str, max_age_seconds: int) 
         raise InitDataInvalidError("empty init_data")
     if len(init_data.encode("utf-8")) > _MAX_INIT_DATA_BYTES:
         raise InitDataInvalidError("init_data too large")
-    pairs = dict(parse_qsl(init_data, keep_blank_values=True))
+    raw_pairs = parse_qsl(init_data, keep_blank_values=True)
+    pairs = dict(raw_pairs)
+    if len(pairs) != len(raw_pairs):
+        raise InitDataInvalidError("duplicate init_data field")
     received_hash = pairs.pop("hash", None)
     if not received_hash:
         raise InitDataInvalidError("missing hash")
+    if not re.fullmatch(r"[0-9a-f]{64}", received_hash):
+        raise InitDataInvalidError("bad hash")
     data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
     sk = _secret_key(bot_token)
     digest = hmac.new(sk, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -42,7 +48,10 @@ def validate_init_data(init_data: str, *, bot_token: str, max_age_seconds: int) 
         auth_date = int(auth_raw)
     except ValueError as e:
         raise InitDataInvalidError("bad auth_date") from e
-    if max_age_seconds > 0 and int(time.time()) - auth_date > max_age_seconds:
+    now = int(time.time())
+    if auth_date > now + 60:
+        raise InitDataInvalidError("auth_date in future")
+    if max_age_seconds > 0 and now - auth_date > max_age_seconds:
         raise InitDataInvalidError("auth_date too old")
     user_raw = pairs.get("user")
     user: dict[str, Any] | None
@@ -51,6 +60,8 @@ def validate_init_data(init_data: str, *, bot_token: str, max_age_seconds: int) 
             user = json.loads(user_raw)
         except json.JSONDecodeError as e:
             raise InitDataInvalidError("bad user json") from e
+        if not isinstance(user, dict):
+            raise InitDataInvalidError("bad user json")
     else:
         user = None
     return {"user": user, "auth_date": auth_date, "raw": pairs}
@@ -58,13 +69,14 @@ def validate_init_data(init_data: str, *, bot_token: str, max_age_seconds: int) 
 
 def parse_user_id(init_data_fields: dict[str, Any]) -> int:
     user = init_data_fields.get("user") or {}
+    if not isinstance(user, dict):
+        raise InitDataInvalidError("bad user json")
     uid = user.get("id")
     if uid is None:
         raise InitDataInvalidError("missing user id")
-    try:
-        return int(uid)
-    except (TypeError, ValueError) as e:
-        raise InitDataInvalidError("bad user id") from e
+    if isinstance(uid, bool) or not isinstance(uid, int) or uid <= 0:
+        raise InitDataInvalidError("bad user id")
+    return uid
 
 
 def parse_language_code(init_data_fields: dict[str, Any]) -> str | None:

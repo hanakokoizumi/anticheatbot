@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import unicodedata
 from typing import Any
 
 import httpx
@@ -13,13 +15,25 @@ class LLMError(RuntimeError):
     pass
 
 
+def has_visible_text(value: object) -> bool:
+    """Keep formatting intact while rejecting empty/control/format-only translations."""
+    if not isinstance(value, str):
+        return False
+    # These Unicode letter/symbol fillers render blank despite not being whitespace.
+    blank_fillers = "\u115f\u1160\u2800\u3164\uffa0"
+    return any(
+        char not in blank_fillers and unicodedata.category(char)[0] in "LNPS"
+        for char in value
+    )
+
+
 async def chat_completion_json(
     *,
     base_url: str,
     api_key: str | None,
     model: str,
     messages: list[dict[str, str]],
-    temperature: float = 0.2,
+    temperature: float | None = 0.2,
     timeout: float = 60.0,
 ) -> dict[str, Any]:
     if not api_key:
@@ -28,23 +42,30 @@ async def chat_completion_json(
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
-        "temperature": temperature,
         "response_format": {"type": "json_object"},
     }
+    # Luna accepts only its default temperature, for translation and moderation alike.
+    if temperature is not None and model.rsplit("/", 1)[-1] != "gpt-6-luna":
+        payload["temperature"] = temperature
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-        try:
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, headers=headers, json=payload)
             resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            log.warning("llm http error: %s %s", e.response.status_code, e.response.text[:500])
-            raise LLMError(str(e)) from e
-        data = resp.json()
+            data = resp.json()
+    except httpx.HTTPError as e:
+        # Callers rely on LLMError to fall back on connection errors and timeouts too.
+        raise LLMError(f"LLM request failed: {type(e).__name__}") from e
+    except ValueError as e:
+        raise LLMError("LLM returned invalid JSON") from e
     try:
         content = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError) as e:
+        result = json.loads(content)
+    except (KeyError, IndexError, TypeError, ValueError) as e:
         raise LLMError("bad llm response shape") from e
-    return json.loads(content)
+    if not isinstance(result, dict):
+        raise LLMError("LLM response must be a JSON object")
+    return result
 
 
 async def translate_markdown(
@@ -88,8 +109,8 @@ async def translate_markdown(
         timeout=timeout,
     )
     translated = out.get("translated")
-    if not isinstance(translated, str):
-        raise LLMError("missing translated string")
+    if not has_visible_text(translated):
+        raise LLMError("missing or blank translated string")
     return translated
 
 
@@ -138,4 +159,13 @@ async def moderate_message(
         timeout=timeout,
     )
     log.debug("moderate_message_response keys=%s", list(out.keys()) if isinstance(out, dict) else type(out))
+    confidence = out.get("confidence")
+    if (
+        out.get("label") not in ("ok", "spam", "abuse", "ads")
+        or isinstance(confidence, bool)
+        or not isinstance(confidence, (int, float))
+        or not 0 <= confidence <= 1
+        or not math.isfinite(confidence)
+    ):
+        raise LLMError("invalid moderation verdict")
     return out

@@ -35,11 +35,16 @@
   }
   async function api(path, opts) {
     var o = opts || {};
-    var r = await fetch(path, {
-      method: o.method || 'GET',
-      headers: Object.assign({}, headers(), o.headers || {}),
-      body: o.body,
-    });
+    var r;
+    try {
+      r = await fetch(path, {
+        method: o.method || 'GET',
+        headers: Object.assign({}, headers(), o.headers || {}),
+        body: o.body,
+      });
+    } catch (e) {
+      throw new Error(at('networkError'));
+    }
     var text = await r.text();
     var data;
     try {
@@ -47,7 +52,10 @@
     } catch {
       data = { message: text };
     }
-    if (!r.ok) throw new Error(data.message || text || String(r.status));
+    if (!r.ok) {
+      var message = typeof data.detail === 'string' ? data.detail : data.message || data.error || text || String(r.status);
+      throw new Error(WebappI18n.adminApiError(locale, message, r.status));
+    }
     return data;
   }
 
@@ -102,11 +110,17 @@
     if (wrap) wrap.setAttribute('aria-busy', on ? 'true' : 'false');
   }
 
-  (async function boot() {
+  async function boot() {
+    var retry = document.getElementById('quizEditRetry');
+    retry.classList.add('hidden');
+    var oldToast = document.getElementById('toast');
+    if (oldToast) oldToast.style.display = 'none';
     if (!qid) {
       formApi.resetQuizForm();
       return;
     }
+    var loaded = false;
+    formApi.setBusy(true);
     setQuizEditLoading(true);
     try {
       var data = await api('/api/admin/quiz?chat_id=' + encodeURIComponent(chatId));
@@ -121,10 +135,10 @@
           el.style.display = 'block';
           el.className = 'toast toast--err';
         }
-        formApi.resetQuizForm();
         return;
       }
       formApi.fillQuizForm(found);
+      loaded = true;
     } catch (e) {
       var t = document.getElementById('toast');
       if (t) {
@@ -134,6 +148,10 @@
       }
     } finally {
       setQuizEditLoading(false);
+      formApi.setBusy(!loaded);
+      retry.classList.toggle('hidden', loaded);
     }
-  })();
+  }
+  document.getElementById('quizEditRetry').onclick = boot;
+  boot();
 })();

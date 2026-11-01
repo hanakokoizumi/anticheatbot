@@ -80,8 +80,8 @@
                   return x.msg || JSON.stringify(x);
                 })
                 .join('; ')
-            : data.message || text || String(r.status);
-      throw new Error(msg);
+            : data.message || data.error || text || String(r.status);
+      throw new Error(WebappI18n.adminApiError(locale, msg, r.status));
     }
     return data;
   }
@@ -180,8 +180,11 @@
 
   refreshAdminI18n();
 
-  (async function init() {
+  async function init() {
     var st = document.getElementById('status');
+    var retry = document.getElementById('retryLoad');
+    retry.classList.add('hidden');
+    st.textContent = at('statusLoading');
     try {
       await loadChats();
       st.style.display = 'none';
@@ -190,6 +193,9 @@
       applyHomeTab();
     } catch (e) {
       st.innerHTML = '<span class="err">' + escapeHtml(e.message) + '</span>';
+      retry.classList.remove('hidden');
     }
-  })();
+  }
+  document.getElementById('retryLoad').onclick = init;
+  init();
 })();

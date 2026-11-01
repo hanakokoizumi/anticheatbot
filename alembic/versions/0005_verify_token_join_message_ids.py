@@ -17,6 +17,18 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Alembic creates version_num as VARCHAR(32) by default, but this and the
+    # next revision IDs exceed that limit. Widen it before Alembic records this
+    # revision; SQLite does not enforce the VARCHAR length.
+    if op.get_bind().dialect.name == "postgresql":
+        op.alter_column(
+            "alembic_version",
+            "version_num",
+            existing_type=sa.String(length=32),
+            type_=sa.String(length=128),
+            existing_nullable=False,
+        )
+
     op.add_column(
         "verify_tokens",
         sa.Column("join_message_chat_id", sa.BigInteger(), nullable=True),

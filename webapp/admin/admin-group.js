@@ -25,6 +25,8 @@
 
   let locale = WebappI18n.normalizeLocale(WebappI18n.getLocale(tg));
   var chatTitleState = '';
+  var settingsBusy = false;
+  var settingsBaseline = null;
 
   var ICON_QUIZ_EDIT_SVG =
     '<svg class="btn-ic" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
@@ -102,8 +104,8 @@
                   return x.msg || JSON.stringify(x);
                 })
                 .join('; ')
-            : data.message || text || String(r.status);
-      throw new Error(msg);
+            : data.message || data.error || text || String(r.status);
+      throw new Error(WebappI18n.adminApiError(locale, msg, r.status));
     }
     return data;
   }
@@ -181,6 +183,7 @@
       if (tw) chatTitleState = tw;
     }
     syncGroupHeader();
+    settingsBaseline = collectPatchBody();
   }
 
   function syncVerifyModeBlocks() {
@@ -293,6 +296,7 @@
       ov.setAttribute('aria-hidden', on ? 'false' : 'true');
     }
     if (wrap) wrap.setAttribute('aria-busy', on ? 'true' : 'false');
+    if (wrap) wrap.inert = on;
   }
 
   async function loadSettingsAndQuiz() {
@@ -311,23 +315,46 @@
   }
 
   async function saveSettings() {
+    if (settingsBusy) return;
     if (!chatId) {
       toast(at('toastSelectChat'), true);
       return;
     }
     var btn = document.getElementById('btnSave');
+    var controls = document.querySelectorAll('.admin-group-scope-wrap input[type="number"]');
+    for (var i = 0; i < controls.length; i++) {
+      if (!controls[i].reportValidity()) return;
+    }
+    var current = collectPatchBody();
+    var body = {};
+    Object.keys(current).forEach(function (key) {
+      if (!settingsBaseline || current[key] !== settingsBaseline[key]) body[key] = current[key];
+    });
+    if (!Object.keys(body).length) {
+      toast(at('toastNoChanges'));
+      return;
+    }
+    settingsBusy = true;
+    setAdminGroupLoading(true);
     if (btn) btn.disabled = true;
     try {
       await api('/api/admin/settings?chat_id=' + encodeURIComponent(chatId), {
         method: 'PATCH',
         headers: headers(),
-        body: JSON.stringify(collectPatchBody()),
+        body: JSON.stringify(body),
       });
+      settingsBaseline = current;
       toast(at('toastSaved'));
-      await loadSettingsAndQuiz();
+      try {
+        await loadSettingsAndQuiz();
+      } catch (reloadError) {
+        toast(at('toastSavedReloadFailed'), true);
+      }
     } catch (e) {
       toast(e.message, true);
     } finally {
+      settingsBusy = false;
+      setAdminGroupLoading(false);
       if (btn) btn.disabled = false;
     }
   }
@@ -496,18 +523,26 @@
   syncVerifyModeBlocks();
   syncPostVerifyWelcomeBlock();
 
-  (async function init() {
+  async function init() {
     var st = document.getElementById('status');
+    var retry = document.getElementById('retryLoad');
+    retry.classList.add('hidden');
+    st.style.display = 'block';
+    st.textContent = at('statusLoading');
     try {
       var me = await api('/api/admin/session');
       if (me.global_admin) document.getElementById('gab').classList.remove('hidden');
-      st.style.display = 'none';
       refreshAdminI18n();
       await loadSettingsAndQuiz();
+      st.style.display = 'none';
       document.getElementById('panel').classList.remove('hidden');
       refreshAdminI18n();
     } catch (e) {
+      st.style.display = 'block';
       st.innerHTML = '<span class="err">' + escapeHtml(e.message) + '</span>';
+      retry.classList.remove('hidden');
     }
-  })();
+  }
+  document.getElementById('retryLoad').onclick = init;
+  init();
 })();

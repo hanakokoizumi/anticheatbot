@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import math
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -13,8 +15,13 @@ from anticheatbot.config import Settings
 from anticheatbot.db.models import AuditEvent, GroupSettings, KnownChat, LLMTranslationCache, QuizQuestion
 from anticheatbot.db.session import session_scope
 from anticheatbot.init_data import InitDataInvalidError, parse_user_id, validate_init_data
+from anticheatbot.handlers.verify_flow import schedule_disabled_verifications
 from anticheatbot.locale_data import normalize_locale
-from anticheatbot.services.groups import get_or_create_group_settings, touch_known_chat
+from anticheatbot.services.groups import (
+    get_or_create_group_settings,
+    set_guest_bot_block_enabled,
+    touch_known_chat,
+)
 from anticheatbot.web.json_body import json_object
 
 log = logging.getLogger(__name__)
@@ -24,7 +31,7 @@ _SPAM_ACTIONS = frozenset({"delete", "delete_and_restrict"})
 _MAX_RULES_MARKDOWN = 200_000
 _MAX_WELCOME_MARKDOWN = 4000
 _MAX_TRANSLATION_ALLOWED_RAW = 8192
-_MAX_CANONICAL_LOCALE_LEN = 64
+_MAX_CANONICAL_LOCALE_LEN = 32  # GroupSettings / LLMTranslationCache VARCHAR width.
 _MAX_QUIZ_PROMPT_LEN = 8000
 _MAX_QUIZ_CHOICE_LEN = 2000
 _MAX_QUIZ_CHOICES = 16
@@ -83,7 +90,10 @@ def _as_float_0_1(key: str, value: object) -> float:
     if isinstance(value, bool):
         raise web.HTTPBadRequest(text=f"invalid type for {key}")
     if isinstance(value, (int, float)):
-        x = float(value)
+        try:
+            x = float(value)
+        except OverflowError as e:
+            raise web.HTTPBadRequest(text=f"{key} out of range") from e
     elif isinstance(value, str):
         try:
             x = float(value.strip().replace(",", "."))
@@ -91,7 +101,7 @@ def _as_float_0_1(key: str, value: object) -> float:
             raise web.HTTPBadRequest(text=f"invalid float for {key}") from e
     else:
         raise web.HTTPBadRequest(text=f"invalid type for {key}")
-    if x < 0.0 or x > 1.0:
+    if not math.isfinite(x) or x < 0.0 or x > 1.0:
         raise web.HTTPBadRequest(text=f"{key} out of range")
     return x
 
@@ -102,7 +112,9 @@ def _coerce_admin_settings_value(key: str, value: object) -> Any:
         if isinstance(value, bool):
             return value
         if isinstance(value, (int, float)):
-            return bool(int(value))
+            if value in (0, 1):
+                return bool(value)
+            raise web.HTTPBadRequest(text=f"invalid boolean for {key}")
         if value is None:
             return False
         if isinstance(value, str):
@@ -147,12 +159,25 @@ def _coerce_admin_settings_value(key: str, value: object) -> Any:
             raise web.HTTPBadRequest(text="canonical_locale too long")
         return normalize_locale(s)
     if key == "translation_allowed_locales":
-        if value is None:
+        if value is None or value == "":
             return None
-        s = str(value)
+        if not isinstance(value, str):
+            raise web.HTTPBadRequest(text="translation_allowed_locales must be a JSON string array")
+        s = value.strip()
+        if not s:
+            return None
         if len(s) > _MAX_TRANSLATION_ALLOWED_RAW:
             raise web.HTTPBadRequest(text="translation_allowed_locales too long")
-        return s
+        try:
+            locales = json.loads(s)
+        except ValueError as e:
+            raise web.HTTPBadRequest(text="translation_allowed_locales must be a JSON string array") from e
+        if not isinstance(locales, list) or any(
+            not isinstance(locale, str) or not locale.strip() or len(locale) > _MAX_CANONICAL_LOCALE_LEN
+            for locale in locales
+        ):
+            raise web.HTTPBadRequest(text="translation_allowed_locales must be a JSON string array")
+        return json.dumps(list(dict.fromkeys(normalize_locale(locale) for locale in locales)), ensure_ascii=False)
     if key == "verify_timeout_seconds":
         return _as_int_bounded(key, value, min_v=30, max_v=604_800)
     if key == "quiz_pass_min_correct":
@@ -171,11 +196,13 @@ def _parse_init(request: web.Request, settings: Settings) -> dict[str, Any]:
     if not raw:
         raise web.HTTPBadRequest(text="missing X-Telegram-Init-Data")
     try:
-        return validate_init_data(
+        fields = validate_init_data(
             raw,
             bot_token=settings.bot_token,
             max_age_seconds=settings.init_data_max_age_seconds,
         )
+        parse_user_id(fields)
+        return fields
     except InitDataInvalidError as e:
         raise web.HTTPForbidden(text=str(e)) from e
 
@@ -222,9 +249,12 @@ def _chat_id_param(request: web.Request) -> int:
     if not raw:
         raise web.HTTPBadRequest(text="missing chat_id")
     try:
-        return int(raw)
+        chat_id = int(raw)
     except ValueError as e:
         raise web.HTTPBadRequest(text="bad chat_id") from e
+    if not -(2 ** 63) <= chat_id < 2 ** 63:
+        raise web.HTTPBadRequest(text="bad chat_id")
+    return chat_id
 
 
 async def admin_session(request: web.Request) -> web.Response:
@@ -353,6 +383,12 @@ async def admin_settings_patch(request: web.Request) -> web.Response:
             if k not in allowed:
                 continue
             setattr(gs, k, _coerce_admin_settings_value(k, v))
+        if gs.turnstile_enabled and not (
+            (settings.turnstile_site_key or "").strip() and (settings.turnstile_secret_key or "").strip()
+        ):
+            raise web.HTTPBadRequest(
+                text=json.dumps({"error": "turnstile_not_configured"}), content_type="application/json"
+            )
         await session.flush()
         session.add(
             AuditEvent(
@@ -363,6 +399,11 @@ async def admin_settings_patch(request: web.Request) -> web.Response:
             )
         )
         await session.flush()
+
+    if "block_guest_bots" in body:
+        set_guest_bot_block_enabled(chat_id, bool(gs.block_guest_bots))
+    if "verification_enabled" in body and not gs.verification_enabled:
+        await schedule_disabled_verifications(request.app["bot"], chat_id)
 
     return web.json_response({"ok": True})
 
@@ -540,6 +581,12 @@ async def admin_quiz_upsert(request: web.Request) -> web.Response:
     await _require_admin_access(request, chat_id, user_id, settings)
     body = await json_object(request)
     qid = body.get("id")
+    if isinstance(qid, bool):
+        raise web.HTTPBadRequest(text="bad id")
+    if qid not in (None, "", 0):
+        qid = _strict_quiz_int(qid, field="id")
+        if not 1 <= qid <= 2 ** 31 - 1:
+            raise web.HTTPBadRequest(text="bad id")
     prompt_str, choice_rows, ci = _coerce_quiz_question_dict(body)
 
     async with session_scope() as session:
@@ -547,13 +594,7 @@ async def admin_quiz_upsert(request: web.Request) -> web.Response:
         if gs is None:
             raise web.HTTPNotFound()
         if qid not in (None, "", 0):
-            if isinstance(qid, bool):
-                raise web.HTTPBadRequest(text="bad id")
-            try:
-                qid_int = int(qid)
-            except (TypeError, ValueError) as e:
-                raise web.HTTPBadRequest(text="bad id") from e
-            q = await session.get(QuizQuestion, qid_int)
+            q = await session.get(QuizQuestion, qid)
             if q is None or q.chat_id != chat_id:
                 raise web.HTTPNotFound()
             q.prompt = prompt_str
@@ -587,6 +628,8 @@ async def admin_quiz_delete(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text="bad id") from e
     if not qid:
         raise web.HTTPBadRequest(text="missing id")
+    if not 1 <= qid <= 2 ** 31 - 1:
+        raise web.HTTPBadRequest(text="bad id")
 
     async with session_scope() as session:
         gs = await _group_settings_for_request(session, chat_id=chat_id, user_id=user_id, settings=settings)

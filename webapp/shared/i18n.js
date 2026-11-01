@@ -4,6 +4,7 @@
  */
 (function (global) {
   var STORAGE = 'anticheat_web_locale';
+  var sessionLocale = null;
 
   function resolveLocale(languageCode) {
     if (!languageCode || !String(languageCode).trim()) return 'zh-Hans';
@@ -23,7 +24,13 @@
   }
 
   function getLocale(tg) {
-    var s = localStorage.getItem(STORAGE);
+    if (sessionLocale) return sessionLocale;
+    var s;
+    try {
+      s = localStorage.getItem(STORAGE);
+    } catch (e) {
+      // Restricted WebViews may deny storage; Telegram's locale still works.
+    }
     if (s) s = String(s).trim();
     if (s === 'zh-Hans' || s === 'en' || s === 'ja' || s === 'ko') return s;
     var u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
@@ -31,7 +38,12 @@
   }
 
   function setLocale(lc) {
-    localStorage.setItem(STORAGE, normalizeLocale(lc));
+    sessionLocale = normalizeLocale(lc);
+    try {
+      localStorage.setItem(STORAGE, sessionLocale);
+    } catch (e) {
+      // Locale persistence is optional, never block the app on it.
+    }
   }
 
   function pick(row, k) {
@@ -165,6 +177,14 @@
       quizBankEmpty: '暂无题目。点「新建题目」添加；也可用单题页的「JSON / LLM」批量导入。',
       toastQuizNewForm: '表单已清空，填写后保存即可新增一道题',
       networkError: '网络异常，请稍后重试。',
+      adminSessionExpired: '登录信息已失效，请关闭并从 Telegram 重新打开管理页面。',
+      adminAccessDenied: '你没有该群的管理权限，或权限已变更。',
+      adminUnavailable: '服务暂时不可用，请稍后重试。',
+      adminNotFound: '内容不存在或已删除，请返回并重新加载。',
+      adminTurnstileNotConfigured: '人机验证尚未配置完成，请联系机器人管理员。',
+      adminPayloadTooLarge: '内容过大，请减少内容后重试。',
+      toastNoChanges: '没有需要保存的修改。',
+      toastSavedReloadFailed: '设置已保存，但重新加载失败，请稍后点击重新加载。',
       statsEvt_verify_timeout: '验证超时',
       statsEvt_join_global_admin_bypass: '全局管理员入群（跳过验证）',
       statsEvt_join_no_verify: '入群（未开验证）',
@@ -357,6 +377,14 @@
         'No questions yet. Tap New question to add one, or use JSON / LLM on the editor page for bulk import.',
       toastQuizNewForm: 'Form cleared — fill and save to add another question.',
       networkError: 'Network error. Please try again.',
+      adminSessionExpired: 'Your session has expired. Close this page and reopen it from Telegram.',
+      adminAccessDenied: 'You do not currently have administrator access to this group.',
+      adminUnavailable: 'The service is temporarily unavailable. Please try again shortly.',
+      adminNotFound: 'This content no longer exists. Go back and reload the page.',
+      adminTurnstileNotConfigured: 'Verification setup is incomplete. Please contact the bot administrator.',
+      adminPayloadTooLarge: 'The content is too large. Reduce its size and try again.',
+      toastNoChanges: 'There are no changes to save.',
+      toastSavedReloadFailed: 'Settings were saved, but the refresh failed. Please reload shortly.',
       statsEvt_verify_timeout: 'Verification timed out',
       statsEvt_join_global_admin_bypass: 'Global admin joined (bypass)',
       statsEvt_join_no_verify: 'Member joined (verification off)',
@@ -549,6 +577,14 @@
         '問題がありません。「新規問題」で追加するか、編集画面の「JSON / LLM」から一括取り込みできます。',
       toastQuizNewForm: 'フォームをクリアしました。入力して保存すると新しい問題を追加できます。',
       networkError: '通信エラー。しばらくしてから再試行してください。',
+      adminSessionExpired: 'ログイン情報の有効期限が切れました。閉じて Telegram から開き直してください。',
+      adminAccessDenied: '現在このグループの管理権限がありません。',
+      adminUnavailable: 'サービスを一時的に利用できません。しばらくしてから再試行してください。',
+      adminNotFound: 'この内容は存在しないか削除されています。戻って再読み込みしてください。',
+      adminTurnstileNotConfigured: '認証の設定が完了していません。ボットの管理者に連絡してください。',
+      adminPayloadTooLarge: '内容が大きすぎます。量を減らして再試行してください。',
+      toastNoChanges: '保存する変更はありません。',
+      toastSavedReloadFailed: '設定は保存されましたが、再読み込みに失敗しました。後で再読み込みしてください。',
       statsEvt_verify_timeout: '認証タイムアウト',
       statsEvt_join_global_admin_bypass: '全体管理者が参加（スキップ）',
       statsEvt_join_no_verify: '参加（認証オフ）',
@@ -741,6 +777,14 @@
         '문항이 없습니다.「새 문항」으로 추가하거나 편집 화면의「JSON / LLM」으로 일괄 가져오기를 사용하세요.',
       toastQuizNewForm: '양식을 비웠습니다. 입력 후 저장하면 새 문항이 추가됩니다.',
       networkError: '네트워크 오류입니다. 잠시 후 다시 시도하세요.',
+      adminSessionExpired: '로그인 정보가 만료되었습니다. 페이지를 닫고 Telegram에서 다시 열어주세요.',
+      adminAccessDenied: '현재 이 그룹에 대한 관리자 권한이 없습니다.',
+      adminUnavailable: '서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요.',
+      adminNotFound: '내용이 없거나 삭제되었습니다. 돌아가서 다시 불러오세요.',
+      adminTurnstileNotConfigured: '인증 설정이 완료되지 않았습니다. 봇 관리자에게 문의하세요.',
+      adminPayloadTooLarge: '내용이 너무 큽니다. 줄인 후 다시 시도하세요.',
+      toastNoChanges: '저장할 변경 사항이 없습니다.',
+      toastSavedReloadFailed: '설정은 저장되었지만 새로고침하지 못했습니다. 잠시 후 다시 불러오세요.',
       statsEvt_verify_timeout: '인증 시간 초과',
       statsEvt_join_global_admin_bypass: '전역 관리자 입장(건너뜀)',
       statsEvt_join_no_verify: '입장(인증 꺼짐)',
@@ -822,8 +866,18 @@
       missingT: '缺少参数 t',
       errOutsideTg: '请在 Telegram 内打开',
       turnstileLoadFailed: '人机验证脚本未能加载，请检查网络或广告拦截后重试。',
+      retryTurnstile: '重新加载人机验证',
+      rulesImageFailed: '部分群规图片未能加载，请检查网络后重新加载。若持续失败，请联系管理员。',
+      reloadRules: '重新加载群规',
+      errTurnstileUnavailable: '人机验证服务暂时不可用，请稍后重试。',
+      errTurnstileNotConfigured: '本群的人机验证尚未配置完成，请联系管理员。',
+      errRestorePermissions: '暂时无法恢复群内发言权限，请重试。',
+      errQuizChanged: '题目已更新，请重新作答。',
+      errMembershipChanged: '你已不在群内，请重新入群后验证。',
+      translationFallback: '翻译暂不可用，已显示原文。你可以继续完成验证。',
       quizEmptyBank: '管理员尚未添加题目，请稍后再试或联系群管理。',
       verifySuccess: '验证通过，即将关闭页面…',
+      verificationDisabled: '本群已关闭入群验证，无需继续作答。请返回群聊。',
       redirectAdmin: '正在打开管理后台…',
       networkError: '网络异常，请稍后重试。',
       errBadToken:
@@ -860,8 +914,18 @@
       missingT: 'Missing parameter t',
       errOutsideTg: 'Open inside Telegram',
       turnstileLoadFailed: 'Turnstile script failed to load. Check network or ad blockers and retry.',
+      retryTurnstile: 'Reload verification',
+      rulesImageFailed: 'Some rules images could not load. Check your connection and reload. Contact an administrator if this continues.',
+      reloadRules: 'Reload rules',
+      errTurnstileUnavailable: 'Verification is temporarily unavailable. Please try again shortly.',
+      errTurnstileNotConfigured: 'Verification is not configured for this group. Please contact an administrator.',
+      errRestorePermissions: 'Unable to restore your chat permissions yet. Please try again.',
+      errQuizChanged: 'The questions have changed. Please answer the updated quiz.',
+      errMembershipChanged: 'You are no longer in this group. Please rejoin before verifying.',
+      translationFallback: 'Translation is temporarily unavailable. The original text is shown; you can continue verifying.',
       quizEmptyBank: 'No quiz questions yet. Try again later or ask a group admin.',
       verifySuccess: 'Verified. Closing…',
+      verificationDisabled: 'This group has turned off join verification. No more answers are needed. Please return to the chat.',
       redirectAdmin: 'Opening admin…',
       networkError: 'Network error. Please try again.',
       errBadToken:
@@ -898,8 +962,18 @@
       missingT: 'パラメータ t がありません',
       errOutsideTg: 'Telegram 内で開いてください',
       turnstileLoadFailed: '認証スクリプトを読み込めませんでした。通信や広告ブロックを確認して再試行してください。',
+      retryTurnstile: '認証を再読み込み',
+      rulesImageFailed: '一部のルール画像を読み込めません。通信を確認して再読み込みしてください。解決しない場合は管理者に連絡してください。',
+      reloadRules: 'ルールを再読み込み',
+      errTurnstileUnavailable: '認証サービスを一時的に利用できません。しばらくしてから再試行してください。',
+      errTurnstileNotConfigured: 'このグループの認証設定が完了していません。管理者に連絡してください。',
+      errRestorePermissions: '発言権限を復元できませんでした。再試行してください。',
+      errQuizChanged: '問題が更新されました。もう一度回答してください。',
+      errMembershipChanged: 'このグループから退出しています。再参加してから認証してください。',
+      translationFallback: '翻訳を一時的に利用できないため原文を表示しています。そのまま認証を続けられます。',
       quizEmptyBank: '問題がまだありません。しばらくしてからか、管理者に連絡してください。',
       verifySuccess: '認証が完了しました。まもなく閉じます…',
+      verificationDisabled: 'このグループの参加認証は無効になりました。回答を続ける必要はありません。チャットに戻ってください。',
       redirectAdmin: '管理画面を開いています…',
       networkError: '通信エラー。しばらくしてから再試行してください。',
       errBadToken:
@@ -936,8 +1010,18 @@
       missingT: '매개변수 t가 없습니다',
       errOutsideTg: 'Telegram 안에서 열어 주세요',
       turnstileLoadFailed: '인증 스크립트를 불러오지 못했습니다. 네트워크나 광고 차단을 확인한 뒤 다시 시도하세요.',
+      retryTurnstile: '인증 다시 불러오기',
+      rulesImageFailed: '일부 규칙 이미지를 불러오지 못했습니다. 연결을 확인하고 다시 불러오세요. 계속 실패하면 관리자에게 문의하세요.',
+      reloadRules: '규칙 다시 불러오기',
+      errTurnstileUnavailable: '인증 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요.',
+      errTurnstileNotConfigured: '이 그룹의 인증 설정이 완료되지 않았습니다. 관리자에게 문의하세요.',
+      errRestorePermissions: '채팅 권한을 복원하지 못했습니다. 다시 시도하세요.',
+      errQuizChanged: '문제가 변경되었습니다. 새 문제에 다시 답해주세요.',
+      errMembershipChanged: '현재 이 그룹의 회원이 아닙니다. 다시 가입한 후 인증해주세요.',
+      translationFallback: '번역을 일시적으로 사용할 수 없어 원문을 표시합니다. 인증을 계속할 수 있습니다.',
       quizEmptyBank: '아직 문항이 없습니다. 잠시 후 다시 시도하거나 관리자에게 문의하세요.',
       verifySuccess: '인증되었습니다. 곧 닫힙니다…',
+      verificationDisabled: '이 그룹의 가입 인증이 비활성화되었습니다. 더 이상 답변할 필요가 없습니다. 채팅으로 돌아가세요.',
       redirectAdmin: '관리 화면으로 이동 중…',
       networkError: '네트워크 오류입니다. 잠시 후 다시 시도하세요.',
       errBadToken:
@@ -1023,6 +1107,20 @@
     return formatStr(adminT(lc, k), vars);
   }
 
+  function adminApiError(lc, raw, status) {
+    var message = String(raw == null ? '' : raw).trim();
+    var lower = message.toLowerCase();
+    if (/^(missing x-telegram-init-data|empty init_data|duplicate init_data field|bad hash|missing hash|missing auth_date|bad auth_date|auth_date too old|auth_date in future|bad user json|missing user id|bad user id|init_data too large)$/.test(lower)) {
+      return adminT(lc, 'adminSessionExpired');
+    }
+    if (lower === 'not chat admin' || status === 403) return adminT(lc, 'adminAccessDenied');
+    if (lower === 'turnstile_not_configured') return adminT(lc, 'adminTurnstileNotConfigured');
+    if (status === 404) return adminT(lc, 'adminNotFound');
+    if (status === 413) return adminT(lc, 'adminPayloadTooLarge');
+    if (status >= 500) return adminT(lc, 'adminUnavailable');
+    return message;
+  }
+
   global.WebappI18n = {
     resolveLocale: resolveLocale,
     normalizeLocale: normalizeLocale,
@@ -1030,6 +1128,7 @@
     setLocale: setLocale,
     adminT: adminT,
     adminFormat: adminFormat,
+    adminApiError: adminApiError,
     verifyT: verifyT,
     applyAdminLocale: applyAdminLocale,
   };

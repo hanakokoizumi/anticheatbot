@@ -45,3 +45,15 @@ def test_json_object_rejects_large_content_length() -> None:
 
     with pytest.raises(web.HTTPRequestEntityTooLarge):
         asyncio.run(run())
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), "nan", "Infinity", "-inf"])
+def test_confidence_rejects_nonfinite_values(bad: object) -> None:
+    with pytest.raises(web.HTTPBadRequest):
+        _coerce_admin_settings_value("llm_min_confidence_action", bad)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), 0.9, 2, -1])
+def test_boolean_does_not_silently_coerce_numbers(bad: object) -> None:
+    with pytest.raises(web.HTTPBadRequest):
+        _coerce_admin_settings_value("verification_enabled", bad)

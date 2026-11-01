@@ -50,3 +50,28 @@ def test_parse_user_id_missing() -> None:
 def test_parse_user_id_bad_type() -> None:
     with pytest.raises(InitDataInvalidError, match="bad user id"):
         parse_user_id({"user": {"id": "not-an-int"}})
+
+
+@pytest.mark.parametrize("bad", [True, False, 3.5, -1, 0, "123"])
+def test_parse_user_id_rejects_coerced_identity(bad: object) -> None:
+    with pytest.raises(InitDataInvalidError, match="bad user id"):
+        parse_user_id({"user": {"id": bad}})
+
+
+def test_unicode_hash_is_rejected_without_internal_error() -> None:
+    with pytest.raises(InitDataInvalidError, match="bad hash"):
+        validate_init_data("auth_date=1&hash=测试", bot_token="1:x", max_age_seconds=60)
+
+
+def test_duplicate_signed_field_is_rejected() -> None:
+    token = "1:x"
+    raw = sign_webapp_init_data(bot_token=token, user={"id": 1})
+    with pytest.raises(InitDataInvalidError, match="duplicate"):
+        validate_init_data(raw + "&auth_date=1", bot_token=token, max_age_seconds=60)
+
+
+def test_future_auth_date_is_rejected() -> None:
+    token = "1:x"
+    raw = sign_webapp_init_data(bot_token=token, user={"id": 1}, auth_date=int(time.time()) + 3600)
+    with pytest.raises(InitDataInvalidError, match="future"):
+        validate_init_data(raw, bot_token=token, max_age_seconds=60)

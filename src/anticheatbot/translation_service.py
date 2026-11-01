@@ -3,14 +3,15 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import Iterable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from anticheatbot.config import Settings
 from anticheatbot.db.models import GroupSettings, LLMTranslationCache
-from anticheatbot.llm import LLMError, translate_markdown
+from anticheatbot.llm import LLMError, has_visible_text, translate_markdown
 
 log = logging.getLogger(__name__)
 
@@ -24,9 +25,11 @@ def _allowed_target(gs: GroupSettings, target: str) -> bool:
     if not raw:
         return True
     try:
-        allowed: Iterable[str] = json.loads(raw)
+        allowed = json.loads(raw)
     except json.JSONDecodeError:
-        return True
+        return False
+    if not isinstance(allowed, list) or not all(isinstance(item, str) for item in allowed):
+        return False
     return target in set(allowed)
 
 
@@ -54,20 +57,20 @@ async def translate_or_same(
 
     digest = sha256_utf8(text)
     pv = settings.translation_prompt_version
-    stmt = select(LLMTranslationCache).where(
-        LLMTranslationCache.namespace == namespace,
-        LLMTranslationCache.chat_id == chat_id,
-        LLMTranslationCache.entity_id == entity_id,
-        LLMTranslationCache.source_locale == src,
-        LLMTranslationCache.target_locale == target_locale,
-        LLMTranslationCache.source_sha256 == digest,
-        LLMTranslationCache.prompt_version == pv,
+    model = settings.effective_translate_model
+    cache_key = dict(
+        namespace=namespace, chat_id=chat_id, entity_id=entity_id,
+        source_locale=src, target_locale=target_locale, source_sha256=digest, prompt_version=pv,
     )
-    row = (await session.execute(stmt)).scalar_one_or_none()
-    if row:
+    # Read columns rather than ORM instances: a prior read in this transaction must
+    # not keep an identity-map copy of a row refreshed through the upsert below.
+    stmt = select(LLMTranslationCache.translated_text, LLMTranslationCache.model).where(
+        *(getattr(LLMTranslationCache, key) == value for key, value in cache_key.items())
+    )
+    row = (await session.execute(stmt)).one_or_none()
+    if row is not None and row.model == model and has_visible_text(row.translated_text):
         return row.translated_text, True
 
-    model = settings.effective_translate_model
     try:
         translated = await translate_markdown(
             base_url=settings.openai_base_url,
@@ -81,17 +84,12 @@ async def translate_or_same(
         log.warning("translation failed, falling back to source: %s", e)
         return text, True
 
-    cache = LLMTranslationCache(
-        namespace=namespace,
-        chat_id=chat_id,
-        entity_id=entity_id,
-        source_locale=src,
-        target_locale=target_locale,
-        source_sha256=digest,
-        prompt_version=pv,
-        translated_text=translated,
-        model=model,
+    insert = sqlite_insert if session.get_bind().dialect.name == "sqlite" else pg_insert
+    cache = insert(LLMTranslationCache).values(
+        **cache_key, translated_text=translated, model=model,
+    ).on_conflict_do_update(
+        index_elements=list(cache_key),
+        set_={"translated_text": translated, "model": model, "created_at": func.now()},
     )
-    session.add(cache)
-    await session.flush()
+    await session.execute(cache)
     return translated, False

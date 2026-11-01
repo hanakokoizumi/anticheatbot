@@ -90,6 +90,14 @@ class UserChatState(Base):
     verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     llm_messages_seen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Message IDs and their review quota slots, scoped to verified_at.
+    llm_review_state: Mapped[dict[str, Any]] = mapped_column(
+        JSONCompat, nullable=False, default=dict, server_default="{}"
+    )
+    membership_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    membership_update_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    membership_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    membership_join_sources: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class QuizQuestion(Base):
@@ -108,7 +116,7 @@ class VerifyQuizSession(Base):
 
     token: Mapped[str] = mapped_column(String(64), ForeignKey("verify_tokens.token"), primary_key=True)
     question_ids_json: Mapped[list[int]] = mapped_column(JSONCompat, nullable=False)
-    shuffle_maps_json: Mapped[dict[str, list[int]]] = mapped_column(JSONCompat, nullable=False, default=dict)
+    shuffle_maps_json: Mapped[dict[str, Any]] = mapped_column(JSONCompat, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
